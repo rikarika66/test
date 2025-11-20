@@ -26,3 +26,4 @@ flutter:
   # ← ここが「サンプル画像を読み込む」ために必要
   assets:
     - assets/images/
+    - assets/images/top1.png
