@@ -90,7 +90,7 @@ class _CoverPageState extends State<CoverPage>
                 child: FittedBox(
                   fit: BoxFit.contain,
                   child: Image.asset(
-                    'assets/images/top1.png', // ← 表紙画像
+                    'assets/images/top2.png', // ← 表紙画像
                   ),
                 ),
               ),
