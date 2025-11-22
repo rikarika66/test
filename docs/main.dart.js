@@ -77179,7 +77179,7 @@ return A.fp(A.alI(A.apt(A.hI(a,s,s,s,s,s,s),B.la),b,r),48,c)},
 N(a){var s,r,q,p=this,o=null,n=A.bG(a,o,t.w).w,m=n.a,l=n.r,k=l.gb4()
 l=l.gb8()
 s=m.a*0.2
-l=A.pG(A.fp(A.apt(new A.wo(A.aBn(o,o,new A.uG("assets/images/top1.png",o,o)),o),B.zm),m.b-(k+l),o),o,o)
+l=A.pG(A.fp(A.apt(new A.wo(A.aBn(o,o,new A.uG("assets/images/top2.png",o,o)),o),B.zm),m.b-(k+l),o),o,o)
 k=p.f
 k===$&&A.a()
 r=p.e
