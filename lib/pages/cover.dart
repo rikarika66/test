@@ -22,7 +22,7 @@ class _CoverPageState extends State<CoverPage>
       duration: const Duration(milliseconds: 800),
     );
 
-    // 左からスッと＆ふわっと
+    // 左からスッとスライド
     _slide = Tween<Offset>(
       begin: const Offset(-0.5, 0),
       end: Offset.zero,
@@ -33,12 +33,17 @@ class _CoverPageState extends State<CoverPage>
       ),
     );
 
+    // ふわっとフェードイン
     _fade = CurvedAnimation(
       parent: _controller,
       curve: Curves.easeIn,
     );
 
-    _controller.forward();
+    // ★ 表紙が出てから 2 秒後にボタンアニメーション開始
+    Future.delayed(const Duration(seconds: 2), () {
+      if (!mounted) return;
+      _controller.forward();
+    });
   }
 
   @override
@@ -96,7 +101,7 @@ class _CoverPageState extends State<CoverPage>
               ),
             ),
 
-            // 画面下に4つのボタン（同時にふわっと左から）
+            // 画面下に4つのボタン（2秒後に同時にふわっと左から）
             Align(
               alignment: Alignment.bottomCenter,
               child: Padding(
