@@ -10,12 +10,9 @@ dependencies:
   flutter:
     sdk: flutter
 
-  # QRコード読み取り用
   mobile_scanner: ^6.0.2
-
-  # 背景写真を撮影・選択するため
   image_picker: ^1.1.2
-
+  
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -23,7 +20,6 @@ dev_dependencies:
 flutter:
   uses-material-design: true
 
-  # ← ここが「サンプル画像を読み込む」ために必要
   assets:
     - assets/images/
-    - assets/images/top1.png
+    

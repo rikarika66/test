@@ -1,147 +1,118 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
 
-class CoverPage extends StatefulWidget {
-  const CoverPage({super.key});
-
-  @override
-  State<CoverPage> createState() => _CoverPageState();
+void main() {
+  runApp(const GoshuinApp());
 }
 
-class _CoverPageState extends State<CoverPage>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-  late final Animation<Offset> _slide;
-  late final Animation<double> _fade;
+class GoshuinApp extends StatefulWidget {
+  const GoshuinApp({super.key});
+
+  @override
+  State<GoshuinApp> createState() => _GoshuinAppState();
+}
+
+class _GoshuinAppState extends State<GoshuinApp> {
+  List<String> assetImages = [];
 
   @override
   void initState() {
     super.initState();
+    _loadAssetImages();
+  }
 
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 800),
+  /// assets/images/ フォルダ内の画像をすべて読み込む
+  Future<void> _loadAssetImages() async {
+    final manifestContent = await rootBundle.loadString('AssetManifest.json');
+    final Map<String, dynamic> manifestMap = Map<String, dynamic>.from(
+      manifestContent.isNotEmpty ? jsonDecode(manifestContent) : {},
     );
 
-    // 左からスッとスライド
-    _slide = Tween<Offset>(
-      begin: const Offset(-0.5, 0),
-      end: Offset.zero,
-    ).animate(
-      CurvedAnimation(
-        parent: _controller,
-        curve: Curves.easeOut,
-      ),
-    );
+    /// パスに "assets/images/" を含み、PNG/JPG/JPEG を含むものだけ抽出
+    final images = manifestMap.keys.where((String key) {
+      return key.startsWith('assets/images/') &&
+          (key.endsWith('.png') ||
+              key.endsWith('.jpg') ||
+              key.endsWith('.jpeg'));
+    }).toList();
 
-    // ふわっとフェードイン
-    _fade = CurvedAnimation(
-      parent: _controller,
-      curve: Curves.easeIn,
-    );
-
-    // ★ 表紙が出てから 2 秒後にボタンアニメーション開始
-    Future.delayed(const Duration(seconds: 2), () {
-      if (!mounted) return;
-      _controller.forward();
+    setState(() {
+      assetImages = images;
     });
   }
 
   @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  /// 共通のメニューボタン
-  Widget _menuButton(
-    String label,
-    VoidCallback onPressed,
-    double width,
-  ) {
-    return SizedBox(
-      width: width,
-      height: 48,
-      child: FilledButton(
-        style: FilledButton.styleFrom(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16), // 角丸
-          ),
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'デジタル御朱印帳',
+      home: Scaffold(
+        appBar: AppBar(
+          title: const Text('デジタル御朱印帳（assets版）'),
         ),
-        onPressed: onPressed,
-        child: FittedBox(
-          fit: BoxFit.scaleDown, // 幅20%でも文字が収まるように
-          child: Text(label),
-        ),
+        body: assetImages.isEmpty
+            ? const Center(child: Text("assets/images の画像を読み込んでいます…"))
+            : ListView.builder(
+                padding: const EdgeInsets.all(12),
+                itemCount: assetImages.length,
+                itemBuilder: (context, index) {
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: AspectRatio(
+                      aspectRatio: 3 / 2,
+                      child: _AssetGoshuinCard(imagePath: assetImages[index]),
+                    ),
+                  );
+                },
+              ),
       ),
     );
   }
+}
+
+/// assets の画像をそのままカード表示するWidget
+class _AssetGoshuinCard extends StatelessWidget {
+  final String imagePath;
+
+  const _AssetGoshuinCard({required this.imagePath});
 
   @override
   Widget build(BuildContext context) {
-    final media = MediaQuery.of(context);
-    final screenSize = media.size;
-    final usableHeight = screenSize.height - media.padding.vertical;
-    final buttonWidth = screenSize.width * 0.20; // 画面横幅の20%
-
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: SafeArea(
-        child: Stack(
-          children: [
-            // 中央に表紙画像：縦いっぱいに縮小して表示（トリミングなし）
-            Center(
-              child: SizedBox(
-                height: usableHeight,
-                child: FittedBox(
-                  fit: BoxFit.contain,
-                  child: Image.asset(
-                    'assets/images/top2.png', // ← 表紙画像
-                  ),
-                ),
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Image.asset(
+            imagePath,
+            fit: BoxFit.cover,
+          ),
+          Container(
+            alignment: Alignment.bottomRight,
+            padding: const EdgeInsets.all(12),
+            child: Text(
+              _todayString(),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                shadows: [
+                  Shadow(
+                    blurRadius: 4,
+                    color: Colors.black,
+                    offset: Offset(1, 1),
+                  )
+                ],
               ),
             ),
-
-            // 画面下に4つのボタン（2秒後に同時にふわっと左から）
-            Align(
-              alignment: Alignment.bottomCenter,
-              child: Padding(
-                padding: const EdgeInsets.only(bottom: 24),
-                child: FadeTransition(
-                  opacity: _fade,
-                  child: SlideTransition(
-                    position: _slide,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        _menuButton(
-                          '御朱印帳',
-                          () => Navigator.pushNamed(context, '/book'),
-                          buttonWidth,
-                        ),
-                        _menuButton(
-                          'ユーザー',
-                          () => Navigator.pushNamed(context, '/user'),
-                          buttonWidth,
-                        ),
-                        _menuButton(
-                          '表紙設定',
-                          () => Navigator.pushNamed(context, '/cover-set'),
-                          buttonWidth,
-                        ),
-                        _menuButton(
-                          'SNS',
-                          () => Navigator.pushNamed(context, '/sns'),
-                          buttonWidth,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
+  }
+
+  /// 今日の日付を「2025年11月20日」形式で返す
+  String _todayString() {
+    final now = DateTime.now();
+    return "${now.year}年${now.month}月${now.day}日";
   }
 }
