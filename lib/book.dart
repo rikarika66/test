@@ -15,10 +15,10 @@ class BookPage extends StatefulWidget {
 class _BookPageState extends State<BookPage> {
   final TextEditingController _memoController = TextEditingController();
 
-  // Webでも使える Uint8List のリスト
+  // 追加した写真（メモリ上＆保存用）
   final List<Uint8List> _albumImages = [];
 
-  // SharedPreferences に保存するキー
+  // SharedPreferences のキー
   static const String _memoKey = 'memoText';
   static const String _albumKey = 'albumImages';
 
@@ -29,7 +29,7 @@ class _BookPageState extends State<BookPage> {
     _loadAlbumImages();
   }
 
-  /// メモを読み込む
+  /// メモ読み込み
   Future<void> _loadMemo() async {
     final prefs = await SharedPreferences.getInstance();
     _memoController.text = prefs.getString(_memoKey) ?? '';
@@ -41,7 +41,7 @@ class _BookPageState extends State<BookPage> {
     await prefs.setString(_memoKey, text);
   }
 
-  /// アルバム画像を読み込む
+  /// アルバム画像を読み込み
   Future<void> _loadAlbumImages() async {
     final prefs = await SharedPreferences.getInstance();
     final List<String>? base64List = prefs.getStringList(_albumKey);
@@ -57,7 +57,7 @@ class _BookPageState extends State<BookPage> {
     }
   }
 
-  /// アルバム画像を保存する
+  /// アルバム画像を保存
   Future<void> _saveAlbumImages() async {
     final prefs = await SharedPreferences.getInstance();
     final base64List =
@@ -65,16 +65,18 @@ class _BookPageState extends State<BookPage> {
     await prefs.setStringList(_albumKey, base64List);
   }
 
-  /// Web/アプリ両対応の画像取得
+  /// 画像を1枚選択
   Future<void> _pickImage() async {
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.image,
         allowMultiple: false,
-        withData: true, // Uint8List を取得
+        withData: true,
       );
 
-      if (result == null) return; // キャンセル
+      if (result == null || result.files.isEmpty) {
+        return;
+      }
 
       final fileBytes = result.files.first.bytes;
       if (fileBytes == null) return;
@@ -83,15 +85,19 @@ class _BookPageState extends State<BookPage> {
         _albumImages.add(fileBytes);
       });
 
-      // 追加したあと保存
       await _saveAlbumImages();
     } catch (e) {
-      debugPrint("画像選択エラー: $e");
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('画像の読み込みに失敗しました')),
-        );
-      }
+      if (!mounted) return;
+
+      debugPrint('画像選択中に例外が発生しました: $e');
+
+      // ★ ここが重要：const を付けない ＋ $e を含める
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('画像の読み込みに失敗しました: $e'),
+          duration: const Duration(seconds: 4),
+        ),
+      );
     }
   }
 
@@ -125,8 +131,10 @@ class _BookPageState extends State<BookPage> {
             const SizedBox(height: 20),
 
             /// メモ欄
-            const Text("参拝メモ",
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            const Text(
+              "参拝メモ",
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            ),
             const SizedBox(height: 8),
             TextField(
               controller: _memoController,
@@ -143,7 +151,7 @@ class _BookPageState extends State<BookPage> {
             ),
             const SizedBox(height: 24),
 
-            /// アルバムヘッダー
+            /// アルバムヘッダー＋ボタン
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -173,7 +181,7 @@ class _BookPageState extends State<BookPage> {
                 children: _albumImages.map((bytes) {
                   return GestureDetector(
                     onTap: () {
-                      // 全画面拡大
+                      // 拡大表示
                       showDialog(
                         context: context,
                         builder: (_) => Dialog(
