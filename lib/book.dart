@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'dart:typed_data';
+import 'dart:html' as html; // ★ Web専用：ブラウザのファイル選択＆表示用
 
 import 'package:flutter/material.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class BookPage extends StatefulWidget {
@@ -15,12 +15,12 @@ class BookPage extends StatefulWidget {
 class _BookPageState extends State<BookPage> {
   final TextEditingController _memoController = TextEditingController();
 
-  // 追加した写真（メモリ上＆保存用）
-  final List<Uint8List> _albumImages = [];
+  // 画像は Data URL 文字列で保持（"data:image/png;base64,..."）
+  final List<String> _albumImageUrls = [];
 
   // SharedPreferences のキー
   static const String _memoKey = 'memoText';
-  static const String _albumKey = 'albumImages';
+  static const String _albumKey = 'albumImageUrls';
 
   @override
   void initState() {
@@ -41,61 +41,67 @@ class _BookPageState extends State<BookPage> {
     await prefs.setString(_memoKey, text);
   }
 
-  /// アルバム画像を読み込み
+  /// アルバム画像読み込み（Data URL のリスト）
   Future<void> _loadAlbumImages() async {
     final prefs = await SharedPreferences.getInstance();
-    final List<String>? base64List = prefs.getStringList(_albumKey);
+    final List<String>? urls = prefs.getStringList(_albumKey);
 
-    if (base64List != null && base64List.isNotEmpty) {
+    if (!mounted) return;
+
+    if (urls != null && urls.isNotEmpty) {
       setState(() {
-        _albumImages
+        _albumImageUrls
           ..clear()
-          ..addAll(
-            base64List.map((s) => base64Decode(s)),
-          );
+          ..addAll(urls);
       });
     }
   }
 
-  /// アルバム画像を保存
+  /// アルバム画像保存（Data URL のリスト）
   Future<void> _saveAlbumImages() async {
     final prefs = await SharedPreferences.getInstance();
-    final base64List =
-        _albumImages.map((bytes) => base64Encode(bytes)).toList();
-    await prefs.setStringList(_albumKey, base64List);
+    await prefs.setStringList(_albumKey, _albumImageUrls);
   }
 
-  /// 画像を1枚選択
+  /// Web向け：ブラウザのファイル選択ダイアログを使って画像を選ぶ
   Future<void> _pickImage() async {
     try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.image,
-        allowMultiple: false,
-        withData: true,
-      );
+      final uploadInput = html.FileUploadInputElement()..accept = 'image/*';
+      uploadInput.click(); // 写真選択ダイアログを開く
 
-      if (result == null || result.files.isEmpty) {
-        return;
-      }
+      uploadInput.onChange.first.then((event) async {
+        final file = uploadInput.files?.first;
+        if (file == null) return;
 
-      final fileBytes = result.files.first.bytes;
-      if (fileBytes == null) return;
+        final reader = html.FileReader();
+        // Data URL（"data:image/...;base64,..."）として読み込む
+        reader.readAsDataUrl(file);
 
-      setState(() {
-        _albumImages.add(fileBytes);
+        await reader.onLoadEnd.first;
+
+        final result = reader.result;
+        if (result is String) {
+          // Data URL 文字列として結果が返る
+          setState(() {
+            _albumImageUrls.add(result);
+          });
+
+          await _saveAlbumImages();
+        } else {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('画像の形式を読み取れませんでした'),
+            ),
+          );
+        }
       });
-
-      await _saveAlbumImages();
     } catch (e) {
       if (!mounted) return;
-
-      debugPrint('画像選択中に例外が発生しました: $e');
-
-      // ★ ここが重要：const を付けない ＋ $e を含める
+      debugPrint('画像読み込み中にエラー: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('画像の読み込みに失敗しました: $e'),
-          duration: const Duration(seconds: 4),
         ),
       );
     }
@@ -169,7 +175,7 @@ class _BookPageState extends State<BookPage> {
             const SizedBox(height: 12),
 
             /// 写真一覧
-            if (_albumImages.isEmpty)
+            if (_albumImageUrls.isEmpty)
               const Text(
                 "まだ写真がありません。右の「写真追加」からアルバムの写真を選んでください。",
                 style: TextStyle(fontSize: 14, color: Colors.grey),
@@ -178,7 +184,7 @@ class _BookPageState extends State<BookPage> {
               Wrap(
                 spacing: 12,
                 runSpacing: 12,
-                children: _albumImages.map((bytes) {
+                children: _albumImageUrls.map((url) {
                   return GestureDetector(
                     onTap: () {
                       // 拡大表示
@@ -186,8 +192,8 @@ class _BookPageState extends State<BookPage> {
                         context: context,
                         builder: (_) => Dialog(
                           child: InteractiveViewer(
-                            child: Image.memory(
-                              bytes,
+                            child: Image.network(
+                              url,
                               fit: BoxFit.contain,
                             ),
                           ),
@@ -196,8 +202,8 @@ class _BookPageState extends State<BookPage> {
                     },
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(12),
-                      child: Image.memory(
-                        bytes,
+                      child: Image.network(
+                        url,
                         width: 120,
                         height: 120,
                         fit: BoxFit.cover,
