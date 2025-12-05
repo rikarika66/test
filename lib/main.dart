@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'book.dart'; // ← 修正：同一階層になったため
+import 'book.dart'; // ★ パスを修正：lib/book.dart を読み込む
 
 void main() {
   runApp(const GoshuinApp());
@@ -18,30 +18,27 @@ class GoshuinApp extends StatelessWidget {
   }
 }
 
-/// 寺院写真＋御朱印（表紙）
+/// 寺院写真＋御朱印（表紙画面）
 class TempleGoshuinPage extends StatelessWidget {
   const TempleGoshuinPage({super.key});
 
   final String templeImagePath = 'assets/images/hutuuji.png';
   final String goshuinImagePath = 'assets/images/hutuuji-gosyu.png';
 
-  /// シンプルな右→左スライドで BookPage へ
   void _goToBookPage(BuildContext context) {
     Navigator.of(context).push(
       PageRouteBuilder(
         transitionDuration: const Duration(milliseconds: 400),
         pageBuilder: (context, animation, secondaryAnimation) =>
-            const BookPage(),
+            const BookPage(), // ★ BookPage は const コンストラクタにしておく
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          final curved = CurvedAnimation(
-            parent: animation,
-            curve: Curves.easeOut,
-          );
+          final curved =
+              CurvedAnimation(parent: animation, curve: Curves.easeOut);
 
           return SlideTransition(
             position: Tween<Offset>(
-              begin: const Offset(1.0, 0.0), // 画面の右端からスライド
-              end: Offset.zero, // 中央へ
+              begin: const Offset(1.0, 0.0),
+              end: Offset.zero,
             ).animate(curved),
             child: child,
           );
@@ -58,29 +55,21 @@ class TempleGoshuinPage extends StatelessWidget {
       ),
       body: GestureDetector(
         behavior: HitTestBehavior.opaque,
-
-        // ▶ 右→左にスワイプしたときだけページ遷移
         onHorizontalDragEnd: (details) {
           if (details.primaryVelocity != null && details.primaryVelocity! < 0) {
             _goToBookPage(context);
           }
         },
-
         child: Stack(
           fit: StackFit.expand,
           children: [
-            // 背景：寺院写真
             Image.asset(
               templeImagePath,
               fit: BoxFit.cover,
             ),
-
-            // 背景を少し白くして見やすく
             Container(
               color: Colors.white.withOpacity(0.25),
             ),
-
-            // 中央：御朱印画像（透過PNG）
             Center(
               child: Padding(
                 padding: const EdgeInsets.all(24.0),
@@ -93,8 +82,6 @@ class TempleGoshuinPage extends StatelessWidget {
                 ),
               ),
             ),
-
-            // 右下に今日の日付
             Positioned(
               right: 16,
               bottom: 16,
@@ -121,7 +108,6 @@ class TempleGoshuinPage extends StatelessWidget {
   }
 }
 
-/// 今日の日付を「YYYY年M月D日」形式で返す
 String _todayString() {
   final now = DateTime.now();
   return "${now.year}年${now.month}月${now.day}日";
