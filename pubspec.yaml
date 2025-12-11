@@ -10,11 +10,16 @@ dependencies:
   flutter:
     sdk: flutter
 
+  # ★ 日本語カレンダー用（showDatePicker を日本語化）
+  flutter_localizations:
+    sdk: flutter
+
   mobile_scanner: ^6.0.2
   image_picker: ^1.1.2
   shared_preferences: ^2.3.0
   file_picker: ^6.1.1
   share_plus: ^12.0.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -25,4 +30,4 @@ flutter:
   assets:
     - assets/images/hutuuji.png
     - assets/images/hutuuji-gosyu.png
-    - assets/images/wagara1.png    
+    - assets/images/wagara1.png

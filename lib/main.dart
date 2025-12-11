@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
-import 'book.dart'; // ★ パスを修正：lib/book.dart を読み込む
+import 'package:flutter/cupertino.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+
+import 'book.dart'; // ← lib/book.dart を読み込む
 
 void main() {
   runApp(const GoshuinApp());
@@ -10,38 +13,48 @@ class GoshuinApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const MaterialApp(
+    return MaterialApp(
       title: 'デジタル御朱印帳',
       debugShowCheckedModeBanner: false,
-      home: TempleGoshuinPage(),
+
+      // ★★★ ここが「日本語カレンダー」にするための設定 ★★★
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: const [
+        Locale('ja', 'JP'), // 日本語（日本）
+      ],
+      // ★★★ ここまで ★★★
+
+      home: const TempleGoshuinPage(),
     );
   }
 }
 
-/// 寺院写真＋御朱印（表紙画面）
+/// 表紙ページ（Kindle方式：右タップで次へ）
 class TempleGoshuinPage extends StatelessWidget {
   const TempleGoshuinPage({super.key});
 
   final String templeImagePath = 'assets/images/hutuuji.png';
   final String goshuinImagePath = 'assets/images/hutuuji-gosyu.png';
 
+  /// 御朱印帳ページへ進む（スライドアニメ）
   void _goToBookPage(BuildContext context) {
     Navigator.of(context).push(
       PageRouteBuilder(
-        transitionDuration: const Duration(milliseconds: 400),
-        pageBuilder: (context, animation, secondaryAnimation) =>
-            const BookPage(), // ★ BookPage は const コンストラクタにしておく
-        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          final curved =
-              CurvedAnimation(parent: animation, curve: Curves.easeOut);
-
-          return SlideTransition(
-            position: Tween<Offset>(
-              begin: const Offset(1.0, 0.0),
-              end: Offset.zero,
-            ).animate(curved),
-            child: child,
+        transitionDuration: const Duration(milliseconds: 350),
+        reverseTransitionDuration: const Duration(milliseconds: 350),
+        pageBuilder: (_, __, ___) => const BookPage(),
+        transitionsBuilder: (_, animation, __, child) {
+          final offset = Tween<Offset>(
+            begin: const Offset(1.0, 0.0),
+            end: Offset.zero,
+          ).animate(
+            CurvedAnimation(parent: animation, curve: Curves.easeOut),
           );
+          return SlideTransition(position: offset, child: child);
         },
       ),
     );
@@ -49,27 +62,32 @@ class TempleGoshuinPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('寺院と御朱印'),
-      ),
-      body: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onHorizontalDragEnd: (details) {
-          if (details.primaryVelocity != null && details.primaryVelocity! < 0) {
-            _goToBookPage(context);
-          }
-        },
-        child: Stack(
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+
+      // ★ Kindle式：右半分タップでページ進む
+      onTapUp: (TapUpDetails details) {
+        final width = MediaQuery.of(context).size.width;
+        if (details.localPosition.dx > width * 0.5) {
+          _goToBookPage(context);
+        }
+      },
+
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('寺院と御朱印'),
+          automaticallyImplyLeading: false, // 戻るボタン消す
+        ),
+        body: Stack(
           fit: StackFit.expand,
           children: [
+            // ★ 寺院写真をそのまま表示（黒くしない・明るくしない）
             Image.asset(
               templeImagePath,
               fit: BoxFit.cover,
             ),
-            Container(
-              color: Colors.white.withOpacity(0.25),
-            ),
+
+            // ★ 御朱印画像（影なし・フィルターなし）
             Center(
               child: Padding(
                 padding: const EdgeInsets.all(24.0),
@@ -82,6 +100,8 @@ class TempleGoshuinPage extends StatelessWidget {
                 ),
               ),
             ),
+
+            // ★ 日付
             Positioned(
               right: 16,
               bottom: 16,
@@ -94,10 +114,7 @@ class TempleGoshuinPage extends StatelessWidget {
                 ),
                 child: Text(
                   _todayString(),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                  ),
+                  style: const TextStyle(color: Colors.white, fontSize: 14),
                 ),
               ),
             ),
