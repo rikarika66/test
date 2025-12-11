@@ -382,9 +382,9 @@ class _BookPageState extends State<BookPage> {
                     itemCount: _albumImages.length,
                     gridDelegate:
                         const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2, // ★ 2列固定
-                      crossAxisSpacing: 12, // 列の間隔
-                      mainAxisSpacing: 12, // 行の間隔
+                      crossAxisCount: 3, // ★ 3列に変更
+                      crossAxisSpacing: 8, // 列の間隔（少し狭め）
+                      mainAxisSpacing: 8, // 行の間隔
                       childAspectRatio: 1.0, // 正方形に近く
                     ),
                     itemBuilder: (context, index) {
@@ -412,7 +412,8 @@ class _BookPageState extends State<BookPage> {
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
-                                  color: const Color(0xFFE2D4BF),
+                                  color:
+                                      const Color(0xFFD0B48A), // ★ 少し濃いベージュ系に変更
                                   width: 1,
                                 ),
                                 color: Colors.white,
