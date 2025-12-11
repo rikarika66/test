@@ -369,17 +369,25 @@ class _BookPageState extends State<BookPage> {
 
                 const SizedBox(height: 12),
 
-                /// アルバム一覧
+                /// アルバム一覧（2列グリッド）
                 if (_albumImages.isEmpty)
                   const Text(
                     'まだ写真がありません。「写真追加」ボタンから画像を選んでください。',
                     style: TextStyle(color: Color(0xFF7A6A59)),
                   )
                 else
-                  Wrap(
-                    spacing: 12,
-                    runSpacing: 12,
-                    children: List.generate(_albumImages.length, (index) {
+                  GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: _albumImages.length,
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2, // ★ 2列固定
+                      crossAxisSpacing: 12, // 列の間隔
+                      mainAxisSpacing: 12, // 行の間隔
+                      childAspectRatio: 1.0, // 正方形に近く
+                    ),
+                    itemBuilder: (context, index) {
                       final bytes = _albumImages[index];
                       final selected = _selectedIndexes.contains(index);
 
@@ -394,19 +402,29 @@ class _BookPageState extends State<BookPage> {
                               }
                             });
                           } else {
-                            // ★ フルスクリーンビューアを開く
                             _openImageViewer(index);
                           }
                         },
                         child: Stack(
                           children: [
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(12),
-                              child: Image.memory(
-                                bytes,
-                                width: 120,
-                                height: 120,
-                                fit: BoxFit.cover,
+                            // ★ 角丸＋薄い枠線の「写真フレーム」
+                            Container(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: const Color(0xFFE2D4BF),
+                                  width: 1,
+                                ),
+                                color: Colors.white,
+                              ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(11),
+                                child: Image.memory(
+                                  bytes,
+                                  fit: BoxFit.cover,
+                                  width: double.infinity,
+                                  height: double.infinity,
+                                ),
                               ),
                             ),
 
@@ -427,7 +445,7 @@ class _BookPageState extends State<BookPage> {
                           ],
                         ),
                       );
-                    }),
+                    },
                   ),
 
                 const SizedBox(height: 40),
