@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart'; // ★ Googleマップ用
 
 class BookPage extends StatefulWidget {
   const BookPage({super.key});
@@ -20,6 +21,13 @@ class _BookPageState extends State<BookPage> {
       TextEditingController(text: '2025年11月28日');
   final TextEditingController _memoController = TextEditingController();
 
+  // ★ 追加項目
+  final TextEditingController _addressController =
+      TextEditingController(); // 所在地
+  final TextEditingController _honzonController =
+      TextEditingController(); // 御本尊
+  final TextEditingController _sectController = TextEditingController(); // 宗派
+
   final List<Uint8List> _albumImages = [];
 
   bool _selectionMode = false;
@@ -32,6 +40,11 @@ class _BookPageState extends State<BookPage> {
   static const String _memoKey = 'memoText';
   static const String _albumKey = 'albumImages';
 
+  // ★ 追加分のキー
+  static const String _addressKey = 'templeAddress';
+  static const String _honzonKey = 'templeHonzon';
+  static const String _sectKey = 'templeSect';
+
   @override
   void initState() {
     super.initState();
@@ -43,6 +56,9 @@ class _BookPageState extends State<BookPage> {
     _templeNameController.dispose();
     _visitDateController.dispose();
     _memoController.dispose();
+    _addressController.dispose();
+    _honzonController.dispose();
+    _sectController.dispose();
     super.dispose();
   }
 
@@ -75,6 +91,11 @@ class _BookPageState extends State<BookPage> {
 
     _memoController.text = prefs.getString(_memoKey) ?? '';
 
+    // ★ 追加項目読み込み
+    _addressController.text = prefs.getString(_addressKey) ?? '';
+    _honzonController.text = prefs.getString(_honzonKey) ?? '';
+    _sectController.text = prefs.getString(_sectKey) ?? '';
+
     final list = prefs.getStringList(_albumKey);
     if (list != null) {
       _albumImages
@@ -106,6 +127,22 @@ class _BookPageState extends State<BookPage> {
       _albumKey,
       _albumImages.map((e) => base64Encode(e)).toList(),
     );
+  }
+
+  // ★ 追加項目保存
+  Future<void> _saveAddress(String v) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_addressKey, v);
+  }
+
+  Future<void> _saveHonzon(String v) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_honzonKey, v);
+  }
+
+  Future<void> _saveSect(String v) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_sectKey, v);
   }
 
   // ------------------ カレンダーで参拝日を選択 ------------------
@@ -161,6 +198,15 @@ class _BookPageState extends State<BookPage> {
     final buffer = StringBuffer();
     if (temple.isNotEmpty) buffer.writeln('寺院：$temple');
     if (date.isNotEmpty) buffer.writeln('参拝日：$date');
+
+    // 簡易プロフィールも共有してもよい
+    final address = _addressController.text.trim();
+    final honzon = _honzonController.text.trim();
+    final sect = _sectController.text.trim();
+    if (address.isNotEmpty) buffer.writeln('所在地：$address');
+    if (sect.isNotEmpty) buffer.writeln('宗派：$sect');
+    if (honzon.isNotEmpty) buffer.writeln('御本尊：$honzon');
+
     if (memo.isNotEmpty) buffer.writeln('\n参拝メモ：\n$memo');
 
     buffer.writeln('\n#御朱印 #御朱印巡り');
@@ -188,6 +234,32 @@ class _BookPageState extends State<BookPage> {
     });
 
     await _saveAlbumImages();
+  }
+
+  // ------------------ Googleマップで開く ------------------
+  Future<void> _openInMaps() async {
+    final temple = _templeNameController.text.trim();
+    final address = _addressController.text.trim();
+
+    if (temple.isEmpty && address.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('寺院名か所在地を入力してください')),
+      );
+      return;
+    }
+
+    final query = [temple, address].where((s) => s.isNotEmpty).join(' ');
+    final uri = Uri.parse(
+      'https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(query)}',
+    );
+
+    final ok = await launchUrl(uri);
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('地図を開けませんでした')),
+      );
+    }
   }
 
   // ------------------ フルスクリーンビューアを開く ------------------
@@ -265,15 +337,10 @@ class _BookPageState extends State<BookPage> {
                           ),
                         ),
                         const SizedBox(height: 12),
-                        TextField(
-                          controller: _templeNameController,
-                          decoration: const InputDecoration(
-                            labelText: '寺院名',
-                            border: OutlineInputBorder(),
-                          ),
-                          onChanged: _saveTempleName,
-                        ),
-                        const SizedBox(height: 12),
+
+                        // 並び順：2.参拝日 → 1.寺院名 → 3.所在地 → 5.宗派 → 4.御本尊
+
+                        // 2. 参拝日
                         TextField(
                           controller: _visitDateController,
                           readOnly: true,
@@ -284,6 +351,55 @@ class _BookPageState extends State<BookPage> {
                           ),
                           onTap: _pickVisitDate,
                         ),
+                        const SizedBox(height: 12),
+
+                        // 1. 寺院名
+                        TextField(
+                          controller: _templeNameController,
+                          decoration: const InputDecoration(
+                            labelText: '寺院名',
+                            border: OutlineInputBorder(),
+                          ),
+                          onChanged: _saveTempleName,
+                        ),
+                        const SizedBox(height: 12),
+
+                        // 3. 所在地（Googleマップ連携）
+                        TextField(
+                          controller: _addressController,
+                          decoration: InputDecoration(
+                            labelText: '所在地（住所）',
+                            border: const OutlineInputBorder(),
+                            suffixIcon: IconButton(
+                              icon: const Icon(Icons.location_on),
+                              onPressed: _openInMaps,
+                              tooltip: 'Googleマップで開く',
+                            ),
+                          ),
+                          onChanged: _saveAddress,
+                        ),
+                        const SizedBox(height: 12),
+
+                        // 5. 宗派
+                        TextField(
+                          controller: _sectController,
+                          decoration: const InputDecoration(
+                            labelText: '宗派',
+                            border: OutlineInputBorder(),
+                          ),
+                          onChanged: _saveSect,
+                        ),
+                        const SizedBox(height: 12),
+
+                        // 4. 御本尊
+                        TextField(
+                          controller: _honzonController,
+                          decoration: const InputDecoration(
+                            labelText: '御本尊',
+                            border: OutlineInputBorder(),
+                          ),
+                          onChanged: _saveHonzon,
+                        ),
                       ],
                     ),
                   ),
@@ -291,7 +407,7 @@ class _BookPageState extends State<BookPage> {
 
                 const SizedBox(height: 24),
 
-                /// メモ欄
+                /// 参拝メモ
                 const Text(
                   '参拝メモ',
                   style: TextStyle(
@@ -369,7 +485,7 @@ class _BookPageState extends State<BookPage> {
 
                 const SizedBox(height: 12),
 
-                /// アルバム一覧（2列グリッド）
+                /// アルバム一覧（3列グリッド）
                 if (_albumImages.isEmpty)
                   const Text(
                     'まだ写真がありません。「写真追加」ボタンから画像を選んでください。',
@@ -382,10 +498,10 @@ class _BookPageState extends State<BookPage> {
                     itemCount: _albumImages.length,
                     gridDelegate:
                         const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 3, // ★ 3列に変更
-                      crossAxisSpacing: 8, // 列の間隔（少し狭め）
-                      mainAxisSpacing: 8, // 行の間隔
-                      childAspectRatio: 1.0, // 正方形に近く
+                      crossAxisCount: 3,
+                      crossAxisSpacing: 8,
+                      mainAxisSpacing: 8,
+                      childAspectRatio: 1.0,
                     ),
                     itemBuilder: (context, index) {
                       final bytes = _albumImages[index];
@@ -407,13 +523,12 @@ class _BookPageState extends State<BookPage> {
                         },
                         child: Stack(
                           children: [
-                            // ★ 角丸＋薄い枠線の「写真フレーム」
+                            // 角丸＋濃いめの枠線
                             Container(
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
-                                  color:
-                                      const Color(0xFFD0B48A), // ★ 少し濃いベージュ系に変更
+                                  color: const Color(0xFFD0B48A),
                                   width: 1,
                                 ),
                                 color: Colors.white,
@@ -429,7 +544,6 @@ class _BookPageState extends State<BookPage> {
                               ),
                             ),
 
-                            // 選択中オーバーレイ（朱色）
                             if (_selectionMode)
                               Positioned.fill(
                                 child: Container(
