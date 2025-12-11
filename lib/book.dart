@@ -117,7 +117,7 @@ class _BookPageState extends State<BookPage> {
       initialDate: initial,
       firstDate: DateTime(1950),
       lastDate: DateTime(2100),
-      // ★ main.dart のローカライズ設定により日本語で表示される
+      // MaterialApp 側のローカライズ設定により日本語で表示される
     );
 
     if (picked != null) {
@@ -190,6 +190,19 @@ class _BookPageState extends State<BookPage> {
     await _saveAlbumImages();
   }
 
+  // ------------------ フルスクリーンビューアを開く ------------------
+  void _openImageViewer(int initialIndex) {
+    if (_albumImages.isEmpty) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => _ImageViewerPage(
+          images: _albumImages,
+          initialIndex: initialIndex,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
@@ -212,8 +225,10 @@ class _BookPageState extends State<BookPage> {
             elevation: 0,
             backgroundColor: Colors.transparent,
             foregroundColor: const Color(0xFF3E2E20),
-            title: const Text('御朱印帳',
-                style: TextStyle(fontWeight: FontWeight.bold)),
+            title: const Text(
+              '御朱印帳',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
             actions: [
               IconButton(
                 onPressed: _shareToSNS,
@@ -250,7 +265,6 @@ class _BookPageState extends State<BookPage> {
                           ),
                         ),
                         const SizedBox(height: 12),
-
                         TextField(
                           controller: _templeNameController,
                           decoration: const InputDecoration(
@@ -260,8 +274,6 @@ class _BookPageState extends State<BookPage> {
                           onChanged: _saveTempleName,
                         ),
                         const SizedBox(height: 12),
-
-                        // ★ 日本語カレンダー対応
                         TextField(
                           controller: _visitDateController,
                           readOnly: true,
@@ -323,8 +335,10 @@ class _BookPageState extends State<BookPage> {
                             onPressed: _selectedIndexes.isEmpty
                                 ? null
                                 : _deleteSelectedImages,
-                            child: const Text("選択削除",
-                                style: TextStyle(color: Colors.red)),
+                            child: const Text(
+                              "選択削除",
+                              style: TextStyle(color: Colors.red),
+                            ),
                           ),
                         TextButton(
                           onPressed: () {
@@ -373,19 +387,15 @@ class _BookPageState extends State<BookPage> {
                         onTap: () {
                           if (_selectionMode) {
                             setState(() {
-                              selected
-                                  ? _selectedIndexes.remove(index)
-                                  : _selectedIndexes.add(index);
+                              if (selected) {
+                                _selectedIndexes.remove(index);
+                              } else {
+                                _selectedIndexes.add(index);
+                              }
                             });
                           } else {
-                            showDialog(
-                              context: context,
-                              builder: (_) => Dialog(
-                                child: InteractiveViewer(
-                                  child: Image.memory(bytes),
-                                ),
-                              ),
-                            );
+                            // ★ フルスクリーンビューアを開く
+                            _openImageViewer(index);
                           }
                         },
                         child: Stack(
@@ -400,7 +410,7 @@ class _BookPageState extends State<BookPage> {
                               ),
                             ),
 
-                            // ★ 選択中の色だけ残す（朱色）
+                            // 選択中オーバーレイ（朱色）
                             if (_selectionMode)
                               Positioned.fill(
                                 child: Container(
@@ -425,6 +435,78 @@ class _BookPageState extends State<BookPage> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// ================== フルスクリーン画像ビューア ==================
+
+class _ImageViewerPage extends StatefulWidget {
+  const _ImageViewerPage({
+    required this.images,
+    required this.initialIndex,
+  });
+
+  final List<Uint8List> images;
+  final int initialIndex;
+
+  @override
+  State<_ImageViewerPage> createState() => _ImageViewerPageState();
+}
+
+class _ImageViewerPageState extends State<_ImageViewerPage> {
+  late final PageController _controller;
+  int _currentIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.initialIndex;
+    _controller = PageController(initialPage: widget.initialIndex);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final total = widget.images.length;
+
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        title: Text('${_currentIndex + 1} / $total'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.close),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+        ],
+      ),
+      body: PageView.builder(
+        controller: _controller,
+        onPageChanged: (i) {
+          setState(() {
+            _currentIndex = i;
+          });
+        },
+        itemCount: widget.images.length,
+        itemBuilder: (_, index) {
+          final bytes = widget.images[index];
+          return Center(
+            child: InteractiveViewer(
+              minScale: 0.8,
+              maxScale: 4.0,
+              child: Image.memory(bytes),
+            ),
+          );
+        },
       ),
     );
   }
