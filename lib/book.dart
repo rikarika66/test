@@ -254,7 +254,12 @@ class _BookPageState extends State<BookPage> {
       'https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(query)}',
     );
 
-    final ok = await launchUrl(uri);
+    // ★ 外部アプリ（or 新しいタブ）として開くモードを明示
+    final ok = await launchUrl(
+      uri,
+      mode: LaunchMode.externalApplication,
+    );
+
     if (!ok && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('地図を開けませんでした')),
