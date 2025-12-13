@@ -124,7 +124,7 @@ class _BookPageState extends State<BookPage> {
     }
   }
 
-  // ---------- Googleマップ（iOS/Android/Webで動く） ----------
+  // ---------- 地図（iPhoneで安定：Apple Maps優先→Googleにフォールバック） ----------
   Future<void> _openInMaps() async {
     final query = [
       _templeNameController.text.trim(),
@@ -139,20 +139,31 @@ class _BookPageState extends State<BookPage> {
       return;
     }
 
-    final url =
-        'https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(query)}';
-    final uri = Uri.parse(url);
+    final appleUri =
+        Uri.parse('https://maps.apple.com/?q=${Uri.encodeComponent(query)}');
 
-    final ok = await launchUrl(
-      uri,
-      mode: LaunchMode.externalApplication, // iOSではこれが安定
+    final googleUri = Uri.parse(
+      'https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(query)}',
     );
 
-    if (!ok && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('地図を開けませんでした')),
-      );
-    }
+    // まず Apple Maps（iOSで最も安定）
+    final okApple = await launchUrl(
+      appleUri,
+      mode: LaunchMode.platformDefault,
+    );
+    if (okApple) return;
+
+    // ダメなら Google
+    final okGoogle = await launchUrl(
+      googleUri,
+      mode: LaunchMode.platformDefault,
+    );
+    if (okGoogle) return;
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('地図を開けませんでした')),
+    );
   }
 
   // ---------- 画像 ----------
@@ -211,47 +222,49 @@ class _BookPageState extends State<BookPage> {
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(16),
-                child: Column(children: [
-                  TextField(
-                    controller: _visitDateController,
-                    readOnly: true,
-                    onTap: _pickDate,
-                    decoration: const InputDecoration(
-                      labelText: '参拝日',
-                      suffixIcon: Icon(Icons.calendar_today),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _templeNameController,
-                    onChanged: (v) => _save(_templeNameKey, v),
-                    decoration: const InputDecoration(labelText: '寺院名'),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _addressController,
-                    onChanged: (v) => _save(_addressKey, v),
-                    decoration: InputDecoration(
-                      labelText: '所在地',
-                      suffixIcon: IconButton(
-                        icon: const Icon(Icons.location_on),
-                        onPressed: _openInMaps, // ★ iOSでも動く
+                child: Column(
+                  children: [
+                    TextField(
+                      controller: _visitDateController,
+                      readOnly: true,
+                      onTap: _pickDate,
+                      decoration: const InputDecoration(
+                        labelText: '参拝日',
+                        suffixIcon: Icon(Icons.calendar_today),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _sectController,
-                    onChanged: (v) => _save(_sectKey, v),
-                    decoration: const InputDecoration(labelText: '宗派'),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _honzonController,
-                    onChanged: (v) => _save(_honzonKey, v),
-                    decoration: const InputDecoration(labelText: '御本尊'),
-                  ),
-                ]),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _templeNameController,
+                      onChanged: (v) => _save(_templeNameKey, v),
+                      decoration: const InputDecoration(labelText: '寺院名'),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _addressController,
+                      onChanged: (v) => _save(_addressKey, v),
+                      decoration: InputDecoration(
+                        labelText: '所在地',
+                        suffixIcon: IconButton(
+                          icon: const Icon(Icons.location_on),
+                          onPressed: _openInMaps, // ★ ここで開く
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _sectController,
+                      onChanged: (v) => _save(_sectKey, v),
+                      decoration: const InputDecoration(labelText: '宗派'),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _honzonController,
+                      onChanged: (v) => _save(_honzonKey, v),
+                      decoration: const InputDecoration(labelText: '御本尊'),
+                    ),
+                  ],
+                ),
               ),
             ),
 
