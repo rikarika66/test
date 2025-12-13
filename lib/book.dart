@@ -1,15 +1,11 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-// ★ Web判定
-import 'package:flutter/foundation.dart' show kIsWeb;
-// ignore: avoid_web_libraries_in_flutter
-import 'dart:html' as html;
-
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class BookPage extends StatefulWidget {
   const BookPage({super.key});
@@ -30,9 +26,6 @@ class _BookPageState extends State<BookPage> {
   final _honzonController = TextEditingController();
 
   final List<Uint8List> _albumImages = [];
-
-  bool _selectionMode = false;
-  final Set<int> _selectedIndexes = {};
 
   DateTime? _visitDate;
 
@@ -84,7 +77,7 @@ class _BookPageState extends State<BookPage> {
         ..addAll(list.map(base64Decode));
     }
 
-    setState(() {});
+    if (mounted) setState(() {});
   }
 
   Future<void> _save(String key, String value) async {
@@ -126,19 +119,20 @@ class _BookPageState extends State<BookPage> {
     if (picked != null) {
       _visitDate = picked;
       _visitDateController.text = _formatDate(picked);
-      _save(_visitDateKey, _visitDateController.text);
-      setState(() {});
+      await _save(_visitDateKey, _visitDateController.text);
+      if (mounted) setState(() {});
     }
   }
 
-  // ---------- Googleマップ（最終解） ----------
-  void _openInMapsFinal() {
+  // ---------- Googleマップ（iOS/Android/Webで動く） ----------
+  Future<void> _openInMaps() async {
     final query = [
       _templeNameController.text.trim(),
       _addressController.text.trim(),
     ].where((e) => e.isNotEmpty).join(' ');
 
     if (query.isEmpty) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('寺院名か所在地を入力してください')),
       );
@@ -147,9 +141,17 @@ class _BookPageState extends State<BookPage> {
 
     final url =
         'https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(query)}';
+    final uri = Uri.parse(url);
 
-    if (kIsWeb) {
-      html.window.open(url, '_blank');
+    final ok = await launchUrl(
+      uri,
+      mode: LaunchMode.externalApplication, // iOSではこれが安定
+    );
+
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('地図を開けませんでした')),
+      );
     }
   }
 
@@ -159,11 +161,14 @@ class _BookPageState extends State<BookPage> {
       type: FileType.image,
       withData: true,
     );
-    if (result == null) return;
+    if (result == null || result.files.isEmpty) return;
 
-    _albumImages.add(result.files.first.bytes!);
+    final bytes = result.files.first.bytes;
+    if (bytes == null) return;
+
+    _albumImages.add(bytes);
     await _saveAlbum();
-    setState(() {});
+    if (mounted) setState(() {});
   }
 
   void _openViewer(int index) {
@@ -230,7 +235,7 @@ class _BookPageState extends State<BookPage> {
                       labelText: '所在地',
                       suffixIcon: IconButton(
                         icon: const Icon(Icons.location_on),
-                        onPressed: _openInMapsFinal,
+                        onPressed: _openInMaps, // ★ iOSでも動く
                       ),
                     ),
                   ),
@@ -266,9 +271,10 @@ class _BookPageState extends State<BookPage> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('アルバム',
-                    style:
-                        TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const Text(
+                  'アルバム',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
                 ElevatedButton.icon(
                   onPressed: _pickImage,
                   icon: const Icon(Icons.photo),
