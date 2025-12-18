@@ -26,11 +26,12 @@ class _BookPageState extends State<BookPage> {
   final _sectController = TextEditingController();
   final _honzonController = TextEditingController();
 
+  // データ
   final List<Uint8List> _albumImages = [];
   DateTime? _visitDate;
   TempleEntry? _entry;
 
-  // ★ アルバム：選択モード／選択削除
+  // アルバム：選択削除
   bool _selectionMode = false;
   final Set<int> _selectedIndexes = <int>{};
 
@@ -89,6 +90,21 @@ class _BookPageState extends State<BookPage> {
     entry.albumImages = List<Uint8List>.from(_albumImages);
 
     await TempleStore.upsert(entry);
+  }
+
+  // ---------- Kindle操作：左端タップで戻る ----------
+  void _popByLeftTap() {
+    if (_selectionMode) {
+      // 選択モード中に誤って戻るのを防ぐ：まず解除
+      setState(() {
+        _selectionMode = false;
+        _selectedIndexes.clear();
+      });
+      return;
+    }
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
   }
 
   // ---------- 日付 ----------
@@ -160,7 +176,7 @@ class _BookPageState extends State<BookPage> {
   Future<void> _pickImage() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.image,
-      allowMultiple: true, // ★複数追加
+      allowMultiple: true,
       withData: true,
     );
     if (result == null || result.files.isEmpty) return;
@@ -170,12 +186,12 @@ class _BookPageState extends State<BookPage> {
 
     if (picked.isEmpty) return;
 
-    // ★ 先にUI反映（即サムネが増える）
+    // 先にUI反映（即増える）
     setState(() {
       _albumImages.addAll(picked);
     });
 
-    // ★ 保存はまとめて1回
+    // 保存はまとめて1回
     await _saveNow();
   }
 
@@ -229,6 +245,7 @@ class _BookPageState extends State<BookPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text(title),
+        automaticallyImplyLeading: false, // ★ ←を消す（Kindle方式）
         actions: [
           IconButton(
             icon: const Icon(Icons.share),
@@ -236,181 +253,229 @@ class _BookPageState extends State<BookPage> {
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            /// 寺院プロフィール
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    TextField(
-                      controller: _visitDateController,
-                      readOnly: true,
-                      onTap: _pickDate,
-                      decoration: const InputDecoration(
-                        labelText: '参拝日',
-                        suffixIcon: Icon(Icons.calendar_today),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _templeNameController,
-                      onChanged: (_) => _saveNow(),
-                      decoration: const InputDecoration(labelText: '寺院名'),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _addressController,
-                      onChanged: (_) => _saveNow(),
-                      decoration: InputDecoration(
-                        labelText: '所在地',
-                        suffixIcon: IconButton(
-                          icon: const Icon(Icons.location_on),
-                          onPressed: _openInMaps,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _sectController,
-                      onChanged: (_) => _saveNow(),
-                      decoration: const InputDecoration(labelText: '宗派'),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _honzonController,
-                      onChanged: (_) => _saveNow(),
-                      decoration: const InputDecoration(labelText: '御本尊'),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 24),
-
-            /// メモ
-            TextField(
-              controller: _memoController,
-              maxLines: 4,
-              onChanged: (_) => _saveNow(),
-              decoration: const InputDecoration(labelText: '参拝メモ'),
-            ),
-
-            const SizedBox(height: 24),
-
-            /// アルバム（選択/削除/複数追加）
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      body: Stack(
+        children: [
+          // 本体スクロール
+          SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'アルバム',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                Row(
-                  children: [
-                    if (_selectionMode)
-                      TextButton(
-                        onPressed: _selectedIndexes.isEmpty
-                            ? null
-                            : _deleteSelectedImages,
-                        child: const Text(
-                          '選択削除',
-                          style: TextStyle(color: Colors.red),
-                        ),
-                      ),
-                    TextButton(
-                      onPressed: () {
-                        setState(() {
-                          _selectionMode = !_selectionMode;
-                          _selectedIndexes.clear();
-                        });
-                      },
-                      child: Text(_selectionMode ? 'キャンセル' : '選択'),
-                    ),
-                    const SizedBox(width: 6),
-                    ElevatedButton.icon(
-                      onPressed: _selectionMode ? null : _pickImage,
-                      icon: const Icon(Icons.photo),
-                      label: const Text('写真追加'),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-
-            if (_albumImages.isEmpty)
-              const Text('まだ写真がありません。「写真追加」から追加できます。')
-            else
-              GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: _albumImages.length,
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 3,
-                  crossAxisSpacing: 8,
-                  mainAxisSpacing: 8,
-                ),
-                itemBuilder: (_, i) {
-                  final bytes = _albumImages[i];
-                  final selected = _selectedIndexes.contains(i);
-
-                  return GestureDetector(
-                    onTap: () {
-                      if (_selectionMode) {
-                        setState(() {
-                          if (selected) {
-                            _selectedIndexes.remove(i);
-                          } else {
-                            _selectedIndexes.add(i);
-                          }
-                        });
-                      } else {
-                        _openViewer(i);
-                      }
-                    },
-                    child: Stack(
+                /// 寺院プロフィール
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
                       children: [
-                        Container(
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: const Color(0xFFD0B48A)),
+                        TextField(
+                          controller: _visitDateController,
+                          readOnly: true,
+                          onTap: _pickDate,
+                          decoration: const InputDecoration(
+                            labelText: '参拝日',
+                            suffixIcon: Icon(Icons.calendar_today),
                           ),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(11),
-                            child: Image.memory(
-                              bytes,
-                              fit: BoxFit.cover,
-                              width: double.infinity,
-                              height: double.infinity,
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _templeNameController,
+                          onChanged: (_) => _saveNow(),
+                          decoration: const InputDecoration(labelText: '寺院名'),
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _addressController,
+                          onChanged: (_) => _saveNow(),
+                          decoration: InputDecoration(
+                            labelText: '所在地',
+                            suffixIcon: IconButton(
+                              icon: const Icon(Icons.location_on),
+                              onPressed: _openInMaps,
                             ),
                           ),
                         ),
-
-                        // ★ 選択モード中のオーバーレイ
-                        if (_selectionMode)
-                          Positioned.fill(
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: selected
-                                    ? Colors.blue.withOpacity(0.35)
-                                    : Colors.blue.withOpacity(0.12),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                          ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _sectController,
+                          onChanged: (_) => _saveNow(),
+                          decoration: const InputDecoration(labelText: '宗派'),
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _honzonController,
+                          onChanged: (_) => _saveNow(),
+                          decoration: const InputDecoration(labelText: '御本尊'),
+                        ),
                       ],
                     ),
-                  );
-                },
-              ),
-          ],
-        ),
+                  ),
+                ),
+
+                const SizedBox(height: 24),
+
+                /// メモ
+                TextField(
+                  controller: _memoController,
+                  maxLines: 4,
+                  onChanged: (_) => _saveNow(),
+                  decoration: const InputDecoration(labelText: '参拝メモ'),
+                ),
+
+                const SizedBox(height: 24),
+
+                /// アルバム（選択削除＋複数追加）
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        const Text(
+                          'アルバム',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        if (_selectionMode) ...[
+                          const SizedBox(width: 10),
+                          Text(
+                            '${_selectedIndexes.length}枚選択',
+                            style: const TextStyle(color: Colors.black54),
+                          ),
+                        ],
+                      ],
+                    ),
+                    Row(
+                      children: [
+                        if (_selectionMode)
+                          TextButton(
+                            onPressed: _selectedIndexes.isEmpty
+                                ? null
+                                : _deleteSelectedImages,
+                            child: const Text(
+                              '選択削除',
+                              style: TextStyle(color: Colors.red),
+                            ),
+                          ),
+                        TextButton(
+                          onPressed: () {
+                            setState(() {
+                              _selectionMode = !_selectionMode;
+                              _selectedIndexes.clear();
+                            });
+                          },
+                          child: Text(_selectionMode ? 'キャンセル' : '選択'),
+                        ),
+                        const SizedBox(width: 6),
+                        ElevatedButton.icon(
+                          onPressed: _selectionMode ? null : _pickImage,
+                          icon: const Icon(Icons.photo),
+                          label: const Text('写真追加'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+
+                if (_albumImages.isEmpty)
+                  const Text('まだ写真がありません。「写真追加」から追加できます。')
+                else
+                  GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: _albumImages.length,
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 3,
+                      crossAxisSpacing: 8,
+                      mainAxisSpacing: 8,
+                    ),
+                    itemBuilder: (_, i) {
+                      final bytes = _albumImages[i];
+                      final selected = _selectedIndexes.contains(i);
+
+                      return GestureDetector(
+                        onTap: () {
+                          if (_selectionMode) {
+                            setState(() {
+                              if (selected) {
+                                _selectedIndexes.remove(i);
+                              } else {
+                                _selectedIndexes.add(i);
+                              }
+                            });
+                          } else {
+                            _openViewer(i);
+                          }
+                        },
+                        child: Stack(
+                          children: [
+                            Container(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: const Color(0xFFD0B48A),
+                                ),
+                              ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(11),
+                                child: Image.memory(
+                                  bytes,
+                                  fit: BoxFit.cover,
+                                  width: double.infinity,
+                                  height: double.infinity,
+                                ),
+                              ),
+                            ),
+
+                            // 選択モード時のオーバーレイ
+                            if (_selectionMode)
+                              Positioned.fill(
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: selected
+                                        ? Colors.blue.withOpacity(0.35)
+                                        : Colors.blue.withOpacity(0.12),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+
+                const SizedBox(height: 40),
+              ],
+            ),
+          ),
+
+          // ★ Kindle操作：左端タップで戻る（中身の操作を邪魔しない）
+          Positioned(
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: MediaQuery.of(context).size.width * 0.18, // 左18%
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTap: _popByLeftTap,
+            ),
+          ),
+
+          // 右端は今は何もしない（必要なら“次へ”を割り当て）
+          Positioned(
+            right: 0,
+            top: 0,
+            bottom: 0,
+            width: MediaQuery.of(context).size.width * 0.18,
+            child: const IgnorePointer(
+              ignoring: true,
+              child: SizedBox.expand(),
+            ),
+          ),
+        ],
       ),
     );
   }
