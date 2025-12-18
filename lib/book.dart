@@ -17,10 +17,10 @@ class BookPage extends StatefulWidget {
 
   final String templeId;
 
-  /// 一覧の並び（右端“次”用）。渡されなければ次へは無効。
+  /// 一覧の並び（前後ページ用）
   final List<String>? templeIds;
 
-  /// 一覧での現在位置（右端“次”用）
+  /// 一覧での現在位置（前後ページ用）
   final int? currentIndex;
 
   @override
@@ -100,36 +100,58 @@ class _BookPageState extends State<BookPage> {
     await TempleStore.upsert(entry);
   }
 
-  // ---------- Kindle操作 ----------
-  void _popByLeftTap() {
-    if (_selectionMode) {
-      setState(() {
-        _selectionMode = false;
-        _selectedIndexes.clear();
-      });
-      return;
-    }
-    if (Navigator.of(context).canPop()) {
-      Navigator.of(context).pop();
-    }
+  // ---------- Kindle：前後ページ判定 ----------
+  bool get _hasPagerInfo =>
+      widget.templeIds != null &&
+      widget.currentIndex != null &&
+      widget.currentIndex! >= 0;
+
+  bool get _canGoNext =>
+      _hasPagerInfo && widget.currentIndex! < widget.templeIds!.length - 1;
+
+  bool get _canGoPrev => _hasPagerInfo && widget.currentIndex! > 0;
+
+  // ---------- Kindle：前へ（左端） ----------
+  Future<void> _goPrevByLeftTap() async {
+    if (_selectionMode) return;
+    if (!_canGoPrev) return;
+
+    final ids = widget.templeIds!;
+    final prevIndex = widget.currentIndex! - 1;
+    final prevId = ids[prevIndex];
+
+    await Navigator.of(context).pushReplacement(
+      PageRouteBuilder(
+        transitionDuration: const Duration(milliseconds: 350),
+        reverseTransitionDuration: const Duration(milliseconds: 350),
+        pageBuilder: (_, __, ___) => BookPage(
+          templeId: prevId,
+          templeIds: ids,
+          currentIndex: prevIndex,
+        ),
+        transitionsBuilder: (_, animation, __, child) {
+          // ★ 前へ：左から入る（逆向き）
+          final offset = Tween<Offset>(
+            begin: const Offset(-1.0, 0.0),
+            end: Offset.zero,
+          ).animate(
+            CurvedAnimation(parent: animation, curve: Curves.easeOut),
+          );
+          return SlideTransition(position: offset, child: child);
+        },
+      ),
+    );
   }
 
-  bool get _canGoNext {
-    final ids = widget.templeIds;
-    final idx = widget.currentIndex;
-    return ids != null && idx != null && idx >= 0 && idx < ids.length - 1;
-  }
-
+  // ---------- Kindle：次へ（右端） ----------
   Future<void> _goNextByRightTap() async {
-    if (_selectionMode) return; // 選択中は誤操作防止
-
+    if (_selectionMode) return;
     if (!_canGoNext) return;
 
     final ids = widget.templeIds!;
     final nextIndex = widget.currentIndex! + 1;
     final nextId = ids[nextIndex];
 
-    // スライドしつつ、同じスタックで次ページへ（置き換え）
     await Navigator.of(context).pushReplacement(
       PageRouteBuilder(
         transitionDuration: const Duration(milliseconds: 350),
@@ -140,6 +162,7 @@ class _BookPageState extends State<BookPage> {
           currentIndex: nextIndex,
         ),
         transitionsBuilder: (_, animation, __, child) {
+          // ★ 次へ：右から入る
           final offset = Tween<Offset>(
             begin: const Offset(1.0, 0.0),
             end: Offset.zero,
@@ -150,6 +173,11 @@ class _BookPageState extends State<BookPage> {
         },
       ),
     );
+  }
+
+  // ---------- 一覧に戻る（右上ボタン） ----------
+  void _backToList() {
+    Navigator.of(context).pop();
   }
 
   // ---------- 日付 ----------
@@ -286,8 +314,14 @@ class _BookPageState extends State<BookPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text(title),
-        automaticallyImplyLeading: false, // ←消す
+        automaticallyImplyLeading: false, // ←は出さない（Kindle方式）
         actions: [
+          // 一覧に戻る
+          IconButton(
+            tooltip: '一覧',
+            icon: const Icon(Icons.list),
+            onPressed: _backToList,
+          ),
           IconButton(
             icon: const Icon(Icons.share),
             onPressed: _share,
@@ -446,9 +480,8 @@ class _BookPageState extends State<BookPage> {
                             Container(
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: const Color(0xFFD0B48A),
-                                ),
+                                border:
+                                    Border.all(color: const Color(0xFFD0B48A)),
                               ),
                               child: ClipRRect(
                                 borderRadius: BorderRadius.circular(11),
@@ -481,7 +514,7 @@ class _BookPageState extends State<BookPage> {
             ),
           ),
 
-          // 左端：戻る
+          // 左端：前の寺院へ
           Positioned(
             left: 0,
             top: 0,
@@ -489,11 +522,11 @@ class _BookPageState extends State<BookPage> {
             width: MediaQuery.of(context).size.width * 0.18,
             child: GestureDetector(
               behavior: HitTestBehavior.translucent,
-              onTap: _popByLeftTap,
+              onTap: _canGoPrev ? _goPrevByLeftTap : null,
             ),
           ),
 
-          // 右端：次の寺院へ（可能なときだけ）
+          // 右端：次の寺院へ
           Positioned(
             right: 0,
             top: 0,
