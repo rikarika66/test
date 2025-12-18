@@ -1,47 +1,38 @@
-import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'temple_store.dart';
+
 class BookPage extends StatefulWidget {
-  const BookPage({super.key});
+  const BookPage({super.key, required this.templeId});
+
+  final String templeId;
 
   @override
   State<BookPage> createState() => _BookPageState();
 }
 
 class _BookPageState extends State<BookPage> {
-  // 基本情報
-  final _templeNameController = TextEditingController(text: '普通寺');
-  final _visitDateController = TextEditingController(text: '2025年11月28日');
+  final _templeNameController = TextEditingController();
+  final _visitDateController = TextEditingController();
   final _memoController = TextEditingController();
 
-  // プロフィール追加項目
   final _addressController = TextEditingController();
   final _sectController = TextEditingController();
   final _honzonController = TextEditingController();
 
   final List<Uint8List> _albumImages = [];
-
   DateTime? _visitDate;
-
-  static const _templeNameKey = 'templeName';
-  static const _visitDateKey = 'visitDate';
-  static const _memoKey = 'memo';
-  static const _albumKey = 'album';
-
-  static const _addressKey = 'address';
-  static const _sectKey = 'sect';
-  static const _honzonKey = 'honzon';
+  TempleEntry? _entry;
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _loadEntry();
   }
 
   @override
@@ -55,42 +46,44 @@ class _BookPageState extends State<BookPage> {
     super.dispose();
   }
 
-  // ---------- 保存・読込 ----------
-  Future<void> _load() async {
-    final prefs = await SharedPreferences.getInstance();
+  Future<void> _loadEntry() async {
+    final loaded = await TempleStore.loadById(widget.templeId);
+    final entry = loaded ?? TempleStore.newEntry();
 
-    _templeNameController.text = prefs.getString(_templeNameKey) ?? '普通寺';
+    _entry = entry;
 
-    final dateText = prefs.getString(_visitDateKey) ?? '2025年11月28日';
-    _visitDateController.text = dateText;
-    _visitDate = _parseDate(dateText);
+    _templeNameController.text = entry.templeName;
+    _visitDateController.text = entry.visitDateText;
+    _memoController.text = entry.memo;
 
-    _memoController.text = prefs.getString(_memoKey) ?? '';
-    _addressController.text = prefs.getString(_addressKey) ?? '';
-    _sectController.text = prefs.getString(_sectKey) ?? '';
-    _honzonController.text = prefs.getString(_honzonKey) ?? '';
+    _addressController.text = entry.address;
+    _sectController.text = entry.sect;
+    _honzonController.text = entry.honzon;
 
-    final list = prefs.getStringList(_albumKey);
-    if (list != null) {
-      _albumImages
-        ..clear()
-        ..addAll(list.map(base64Decode));
-    }
+    _visitDate = _parseDate(entry.visitDateText);
+
+    _albumImages
+      ..clear()
+      ..addAll(entry.albumImages);
 
     if (mounted) setState(() {});
   }
 
-  Future<void> _save(String key, String value) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(key, value);
-  }
+  Future<void> _saveNow() async {
+    final entry = _entry;
+    if (entry == null) return;
 
-  Future<void> _saveAlbum() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList(
-      _albumKey,
-      _albumImages.map(base64Encode).toList(),
-    );
+    entry.templeName = _templeNameController.text;
+    entry.visitDateText = _visitDateController.text;
+    entry.memo = _memoController.text;
+
+    entry.address = _addressController.text;
+    entry.sect = _sectController.text;
+    entry.honzon = _honzonController.text;
+
+    entry.albumImages = List<Uint8List>.from(_albumImages);
+
+    await TempleStore.upsert(entry);
   }
 
   // ---------- 日付 ----------
@@ -119,12 +112,12 @@ class _BookPageState extends State<BookPage> {
     if (picked != null) {
       _visitDate = picked;
       _visitDateController.text = _formatDate(picked);
-      await _save(_visitDateKey, _visitDateController.text);
+      await _saveNow();
       if (mounted) setState(() {});
     }
   }
 
-  // ---------- 地図（iPhoneで安定：Apple Maps優先→Googleにフォールバック） ----------
+  // ---------- 地図（iOSアプリ向け：Apple→Googleフォールバック） ----------
   Future<void> _openInMaps() async {
     final query = [
       _templeNameController.text.trim(),
@@ -141,23 +134,15 @@ class _BookPageState extends State<BookPage> {
 
     final appleUri =
         Uri.parse('https://maps.apple.com/?q=${Uri.encodeComponent(query)}');
-
     final googleUri = Uri.parse(
       'https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(query)}',
     );
 
-    // まず Apple Maps（iOSで最も安定）
-    final okApple = await launchUrl(
-      appleUri,
-      mode: LaunchMode.platformDefault,
-    );
+    final okApple = await launchUrl(appleUri, mode: LaunchMode.platformDefault);
     if (okApple) return;
 
-    // ダメなら Google
-    final okGoogle = await launchUrl(
-      googleUri,
-      mode: LaunchMode.platformDefault,
-    );
+    final okGoogle =
+        await launchUrl(googleUri, mode: LaunchMode.platformDefault);
     if (okGoogle) return;
 
     if (!mounted) return;
@@ -178,7 +163,7 @@ class _BookPageState extends State<BookPage> {
     if (bytes == null) return;
 
     _albumImages.add(bytes);
-    await _saveAlbum();
+    await _saveNow();
     if (mounted) setState(() {});
   }
 
@@ -191,25 +176,33 @@ class _BookPageState extends State<BookPage> {
     );
   }
 
-  // ---------- UI ----------
+  Future<void> _share() async {
+    final text = StringBuffer()
+      ..writeln('寺院：${_templeNameController.text}')
+      ..writeln('参拝日：${_visitDateController.text}')
+      ..writeln('所在地：${_addressController.text}')
+      ..writeln('宗派：${_sectController.text}')
+      ..writeln('御本尊：${_honzonController.text}')
+      ..writeln()
+      ..writeln(_memoController.text)
+      ..writeln()
+      ..writeln('#御朱印 #御朱印巡り');
+    Share.share(text.toString());
+  }
+
   @override
   Widget build(BuildContext context) {
+    final title = _templeNameController.text.isEmpty
+        ? '御朱印帳'
+        : '御朱印帳（${_templeNameController.text}）';
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('御朱印帳'),
+        title: Text(title),
         actions: [
           IconButton(
             icon: const Icon(Icons.share),
-            onPressed: () {
-              Share.share(
-                '寺院：${_templeNameController.text}\n'
-                '参拝日：${_visitDateController.text}\n'
-                '所在地：${_addressController.text}\n'
-                '宗派：${_sectController.text}\n'
-                '御本尊：${_honzonController.text}\n\n'
-                '${_memoController.text}',
-              );
-            },
+            onPressed: _share,
           ),
         ],
       ),
@@ -218,7 +211,6 @@ class _BookPageState extends State<BookPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            /// 寺院プロフィール
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(16),
@@ -236,58 +228,51 @@ class _BookPageState extends State<BookPage> {
                     const SizedBox(height: 12),
                     TextField(
                       controller: _templeNameController,
-                      onChanged: (v) => _save(_templeNameKey, v),
+                      onChanged: (_) => _saveNow(),
                       decoration: const InputDecoration(labelText: '寺院名'),
                     ),
                     const SizedBox(height: 12),
                     TextField(
                       controller: _addressController,
-                      onChanged: (v) => _save(_addressKey, v),
+                      onChanged: (_) => _saveNow(),
                       decoration: InputDecoration(
                         labelText: '所在地',
                         suffixIcon: IconButton(
                           icon: const Icon(Icons.location_on),
-                          onPressed: _openInMaps, // ★ ここで開く
+                          onPressed: _openInMaps,
                         ),
                       ),
                     ),
                     const SizedBox(height: 12),
                     TextField(
                       controller: _sectController,
-                      onChanged: (v) => _save(_sectKey, v),
+                      onChanged: (_) => _saveNow(),
                       decoration: const InputDecoration(labelText: '宗派'),
                     ),
                     const SizedBox(height: 12),
                     TextField(
                       controller: _honzonController,
-                      onChanged: (v) => _save(_honzonKey, v),
+                      onChanged: (_) => _saveNow(),
                       decoration: const InputDecoration(labelText: '御本尊'),
                     ),
                   ],
                 ),
               ),
             ),
-
             const SizedBox(height: 24),
-
-            /// メモ
             TextField(
               controller: _memoController,
               maxLines: 4,
-              onChanged: (v) => _save(_memoKey, v),
+              onChanged: (_) => _saveNow(),
               decoration: const InputDecoration(labelText: '参拝メモ'),
             ),
-
             const SizedBox(height: 24),
-
-            /// アルバム
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
-                  'アルバム',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
+                const Text('アルバム',
+                    style:
+                        TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                 ElevatedButton.icon(
                   onPressed: _pickImage,
                   icon: const Icon(Icons.photo),
@@ -296,7 +281,6 @@ class _BookPageState extends State<BookPage> {
               ],
             ),
             const SizedBox(height: 12),
-
             GridView.builder(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
@@ -330,7 +314,6 @@ class _BookPageState extends State<BookPage> {
   }
 }
 
-/// フルスクリーンビューア
 class _ImageViewer extends StatelessWidget {
   const _ImageViewer({required this.images, required this.index});
 

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
-import 'book.dart'; // ← lib/book.dart を読み込む
+import 'temple_list.dart'; // ★ 寺院一覧ページへ
 
 void main() {
   runApp(const GoshuinApp());
@@ -17,16 +17,16 @@ class GoshuinApp extends StatelessWidget {
       title: 'デジタル御朱印帳',
       debugShowCheckedModeBanner: false,
 
-      // ★★★ ここが「日本語カレンダー」にするための設定 ★★★
+      // ★ 日本語カレンダー設定
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
       supportedLocales: const [
-        Locale('ja', 'JP'), // 日本語（日本）
+        Locale('ja', 'JP'),
       ],
-      // ★★★ ここまで ★★★
+      // ★ ここまで
 
       home: const TempleGoshuinPage(),
     );
@@ -40,13 +40,13 @@ class TempleGoshuinPage extends StatelessWidget {
   final String templeImagePath = 'assets/images/hutuuji.png';
   final String goshuinImagePath = 'assets/images/hutuuji-gosyu.png';
 
-  /// 御朱印帳ページへ進む（スライドアニメ）
-  void _goToBookPage(BuildContext context) {
+  /// 寺院一覧ページへ進む（スライドアニメ）
+  void _goToTempleList(BuildContext context) {
     Navigator.of(context).push(
       PageRouteBuilder(
         transitionDuration: const Duration(milliseconds: 350),
         reverseTransitionDuration: const Duration(milliseconds: 350),
-        pageBuilder: (_, __, ___) => const BookPage(),
+        pageBuilder: (_, __, ___) => const TempleListPage(),
         transitionsBuilder: (_, animation, __, child) {
           final offset = Tween<Offset>(
             begin: const Offset(1.0, 0.0),
@@ -69,25 +69,22 @@ class TempleGoshuinPage extends StatelessWidget {
       onTapUp: (TapUpDetails details) {
         final width = MediaQuery.of(context).size.width;
         if (details.localPosition.dx > width * 0.5) {
-          _goToBookPage(context);
+          _goToTempleList(context);
         }
       },
 
       child: Scaffold(
         appBar: AppBar(
           title: const Text('寺院と御朱印'),
-          automaticallyImplyLeading: false, // 戻るボタン消す
+          automaticallyImplyLeading: false,
         ),
         body: Stack(
           fit: StackFit.expand,
           children: [
-            // ★ 寺院写真をそのまま表示（黒くしない・明るくしない）
             Image.asset(
               templeImagePath,
               fit: BoxFit.cover,
             ),
-
-            // ★ 御朱印画像（影なし・フィルターなし）
             Center(
               child: Padding(
                 padding: const EdgeInsets.all(24.0),
@@ -100,8 +97,6 @@ class TempleGoshuinPage extends StatelessWidget {
                 ),
               ),
             ),
-
-            // ★ 日付
             Positioned(
               right: 16,
               bottom: 16,
