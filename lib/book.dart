@@ -17,6 +17,7 @@ class BookPage extends StatefulWidget {
 }
 
 class _BookPageState extends State<BookPage> {
+  // 入力コントローラ
   final _templeNameController = TextEditingController();
   final _visitDateController = TextEditingController();
   final _memoController = TextEditingController();
@@ -28,6 +29,10 @@ class _BookPageState extends State<BookPage> {
   final List<Uint8List> _albumImages = [];
   DateTime? _visitDate;
   TempleEntry? _entry;
+
+  // ★ アルバム：選択モード／選択削除
+  bool _selectionMode = false;
+  final Set<int> _selectedIndexes = <int>{};
 
   @override
   void initState() {
@@ -151,23 +156,44 @@ class _BookPageState extends State<BookPage> {
     );
   }
 
-  // ---------- 画像 ----------
+  // ---------- 画像：複数選択して一括追加 ----------
   Future<void> _pickImage() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.image,
+      allowMultiple: true, // ★複数追加
       withData: true,
     );
     if (result == null || result.files.isEmpty) return;
 
-    final bytes = result.files.first.bytes;
-    if (bytes == null) return;
+    final picked =
+        result.files.map((f) => f.bytes).whereType<Uint8List>().toList();
 
-    // ★ 先にUIへ反映（即サムネが増える）
+    if (picked.isEmpty) return;
+
+    // ★ 先にUI反映（即サムネが増える）
     setState(() {
-      _albumImages.add(bytes);
+      _albumImages.addAll(picked);
     });
 
-    // ★ 保存は後でOK
+    // ★ 保存はまとめて1回
+    await _saveNow();
+  }
+
+  // ---------- 画像：選択削除 ----------
+  Future<void> _deleteSelectedImages() async {
+    if (_selectedIndexes.isEmpty) return;
+
+    setState(() {
+      final sorted = _selectedIndexes.toList()..sort((a, b) => b.compareTo(a));
+      for (final i in sorted) {
+        if (i >= 0 && i < _albumImages.length) {
+          _albumImages.removeAt(i);
+        }
+      }
+      _selectedIndexes.clear();
+      _selectionMode = false;
+    });
+
     await _saveNow();
   }
 
@@ -215,6 +241,7 @@ class _BookPageState extends State<BookPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            /// 寺院プロフィール
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(16),
@@ -263,54 +290,125 @@ class _BookPageState extends State<BookPage> {
                 ),
               ),
             ),
+
             const SizedBox(height: 24),
+
+            /// メモ
             TextField(
               controller: _memoController,
               maxLines: 4,
               onChanged: (_) => _saveNow(),
               decoration: const InputDecoration(labelText: '参拝メモ'),
             ),
+
             const SizedBox(height: 24),
+
+            /// アルバム（選択/削除/複数追加）
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('アルバム',
-                    style:
-                        TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                ElevatedButton.icon(
-                  onPressed: _pickImage,
-                  icon: const Icon(Icons.photo),
-                  label: const Text('写真追加'),
+                const Text(
+                  'アルバム',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                Row(
+                  children: [
+                    if (_selectionMode)
+                      TextButton(
+                        onPressed: _selectedIndexes.isEmpty
+                            ? null
+                            : _deleteSelectedImages,
+                        child: const Text(
+                          '選択削除',
+                          style: TextStyle(color: Colors.red),
+                        ),
+                      ),
+                    TextButton(
+                      onPressed: () {
+                        setState(() {
+                          _selectionMode = !_selectionMode;
+                          _selectedIndexes.clear();
+                        });
+                      },
+                      child: Text(_selectionMode ? 'キャンセル' : '選択'),
+                    ),
+                    const SizedBox(width: 6),
+                    ElevatedButton.icon(
+                      onPressed: _selectionMode ? null : _pickImage,
+                      icon: const Icon(Icons.photo),
+                      label: const Text('写真追加'),
+                    ),
+                  ],
                 ),
               ],
             ),
             const SizedBox(height: 12),
-            GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: _albumImages.length,
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3,
-                crossAxisSpacing: 8,
-                mainAxisSpacing: 8,
-              ),
-              itemBuilder: (_, i) => GestureDetector(
-                onTap: () => _openViewer(i),
-                child: Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xFFD0B48A)),
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(11),
-                    child: Image.memory(
-                      _albumImages[i],
-                      fit: BoxFit.cover,
-                    ),
-                  ),
+
+            if (_albumImages.isEmpty)
+              const Text('まだ写真がありません。「写真追加」から追加できます。')
+            else
+              GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: _albumImages.length,
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3,
+                  crossAxisSpacing: 8,
+                  mainAxisSpacing: 8,
                 ),
+                itemBuilder: (_, i) {
+                  final bytes = _albumImages[i];
+                  final selected = _selectedIndexes.contains(i);
+
+                  return GestureDetector(
+                    onTap: () {
+                      if (_selectionMode) {
+                        setState(() {
+                          if (selected) {
+                            _selectedIndexes.remove(i);
+                          } else {
+                            _selectedIndexes.add(i);
+                          }
+                        });
+                      } else {
+                        _openViewer(i);
+                      }
+                    },
+                    child: Stack(
+                      children: [
+                        Container(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: const Color(0xFFD0B48A)),
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(11),
+                            child: Image.memory(
+                              bytes,
+                              fit: BoxFit.cover,
+                              width: double.infinity,
+                              height: double.infinity,
+                            ),
+                          ),
+                        ),
+
+                        // ★ 選択モード中のオーバーレイ
+                        if (_selectionMode)
+                          Positioned.fill(
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: selected
+                                    ? Colors.blue.withOpacity(0.35)
+                                    : Colors.blue.withOpacity(0.12),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  );
+                },
               ),
-            ),
           ],
         ),
       ),
@@ -318,6 +416,7 @@ class _BookPageState extends State<BookPage> {
   }
 }
 
+/// フルスクリーンビューア
 class _ImageViewer extends StatelessWidget {
   const _ImageViewer({required this.images, required this.index});
 
