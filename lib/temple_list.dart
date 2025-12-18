@@ -3,6 +3,12 @@ import 'package:flutter/material.dart';
 import 'temple_store.dart';
 import 'book.dart';
 
+enum TempleSortMode {
+  visitDateDesc,
+  visitDateAsc,
+  nameAsc,
+}
+
 class TempleListPage extends StatefulWidget {
   const TempleListPage({super.key});
 
@@ -12,6 +18,7 @@ class TempleListPage extends StatefulWidget {
 
 class _TempleListPageState extends State<TempleListPage> {
   List<TempleEntry> _entries = [];
+  TempleSortMode _sortMode = TempleSortMode.visitDateDesc;
 
   @override
   void initState() {
@@ -19,8 +26,52 @@ class _TempleListPageState extends State<TempleListPage> {
     _reload();
   }
 
+  DateTime? _parseDate(String s) {
+    final r = RegExp(r'(\d+)年(\d+)月(\d+)日');
+    final m = r.firstMatch(s);
+    if (m == null) return null;
+    return DateTime(
+      int.parse(m.group(1)!),
+      int.parse(m.group(2)!),
+      int.parse(m.group(3)!),
+    );
+  }
+
+  int _compareDateNullable(DateTime? a, DateTime? b, {required bool desc}) {
+    // null（未入力）は常に最後
+    if (a == null && b == null) return 0;
+    if (a == null) return 1;
+    if (b == null) return -1;
+
+    final cmp = a.compareTo(b);
+    return desc ? -cmp : cmp;
+  }
+
+  void _applySort(List<TempleEntry> list) {
+    switch (_sortMode) {
+      case TempleSortMode.visitDateDesc:
+        list.sort((x, y) => _compareDateNullable(
+              _parseDate(x.visitDateText),
+              _parseDate(y.visitDateText),
+              desc: true,
+            ));
+        break;
+      case TempleSortMode.visitDateAsc:
+        list.sort((x, y) => _compareDateNullable(
+              _parseDate(x.visitDateText),
+              _parseDate(y.visitDateText),
+              desc: false,
+            ));
+        break;
+      case TempleSortMode.nameAsc:
+        list.sort((x, y) => (x.templeName).compareTo(y.templeName));
+        break;
+    }
+  }
+
   Future<void> _reload() async {
     final all = await TempleStore.loadAll();
+    _applySort(all);
     if (!mounted) return;
     setState(() => _entries = all);
   }
@@ -50,7 +101,6 @@ class _TempleListPageState extends State<TempleListPage> {
   Future<void> _addNew() async {
     final entry = TempleStore.newEntry();
 
-    // 先にUI反映（即見える）
     setState(() {
       _entries.insert(0, entry);
     });
@@ -58,7 +108,6 @@ class _TempleListPageState extends State<TempleListPage> {
     await TempleStore.upsert(entry);
     if (!mounted) return;
 
-    // 追加したらそのまま詳細へ（右端“次”用に ids/index を渡す）
     final ids = _currentTempleIds();
     final idx = ids.indexOf(entry.id);
 
@@ -118,12 +167,50 @@ class _TempleListPageState extends State<TempleListPage> {
     }
   }
 
+  String _sortLabel(TempleSortMode m) {
+    switch (m) {
+      case TempleSortMode.visitDateDesc:
+        return '参拝日：新しい順';
+      case TempleSortMode.visitDateAsc:
+        return '参拝日：古い順';
+      case TempleSortMode.nameAsc:
+        return '寺院名：A→Z';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final edge = MediaQuery.of(context).size.width * 0.10;
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('寺院一覧'),
-        automaticallyImplyLeading: false, // ←消す
+        title: Text('寺院一覧（${_sortLabel(_sortMode)}）'),
+        automaticallyImplyLeading: false,
+        actions: [
+          PopupMenuButton<TempleSortMode>(
+            tooltip: '並び替え',
+            icon: const Icon(Icons.sort),
+            initialValue: _sortMode,
+            onSelected: (m) async {
+              setState(() => _sortMode = m);
+              await _reload();
+            },
+            itemBuilder: (context) => const [
+              PopupMenuItem(
+                value: TempleSortMode.visitDateDesc,
+                child: Text('参拝日：新しい順'),
+              ),
+              PopupMenuItem(
+                value: TempleSortMode.visitDateAsc,
+                child: Text('参拝日：古い順'),
+              ),
+              PopupMenuItem(
+                value: TempleSortMode.nameAsc,
+                child: Text('寺院名：A→Z'),
+              ),
+            ],
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _addNew,
@@ -150,10 +237,9 @@ class _TempleListPageState extends State<TempleListPage> {
 
                     return Card(
                       child: ListTile(
-                        title: Text(
-                          title,
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
+                        title: Text(title,
+                            style:
+                                const TextStyle(fontWeight: FontWeight.bold)),
                         subtitle: Text(sub),
                         onTap: () => _open(e.id),
                         trailing: IconButton(
@@ -165,12 +251,12 @@ class _TempleListPageState extends State<TempleListPage> {
                   },
                 ),
 
-          // Kindle操作：左端タップで戻る
+          // Kindle操作：左端タップで戻る（このページに前がある場合のみ）
           Positioned(
             left: 0,
             top: 0,
             bottom: 0,
-            width: MediaQuery.of(context).size.width * 0.18,
+            width: edge,
             child: GestureDetector(
               behavior: HitTestBehavior.translucent,
               onTap: _popIfPossible,

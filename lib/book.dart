@@ -97,24 +97,24 @@ class _BookPageState extends State<BookPage> {
 
   // ---------- Kindle：前後ページ ----------
   bool get _canGoPrev =>
+      !_selectionMode &&
       widget.templeIds != null &&
       widget.currentIndex != null &&
       widget.currentIndex! > 0;
 
   bool get _canGoNext =>
+      !_selectionMode &&
       widget.templeIds != null &&
       widget.currentIndex != null &&
       widget.currentIndex! < widget.templeIds!.length - 1;
 
   Future<void> _goPrev() async {
-    if (_selectionMode) return;
     if (!_canGoPrev) return;
     final i = widget.currentIndex! - 1;
     await _replace(widget.templeIds![i], i, fromLeft: true);
   }
 
   Future<void> _goNext() async {
-    if (_selectionMode) return;
     if (!_canGoNext) return;
     final i = widget.currentIndex! + 1;
     await _replace(widget.templeIds![i], i, fromLeft: false);
@@ -235,13 +235,56 @@ class _BookPageState extends State<BookPage> {
     await _saveNow();
   }
 
-  // FilePickerのenum名は FileType です（上のタイプミス防止）
-  // ignore: unused_element
-  FileType get _dummy => FileType.image;
+  // ---------- アルバム：選択モード ----------
+  void _enterSelectionMode(int index) {
+    setState(() {
+      _selectionMode = true;
+      _selectedIndexes.add(index);
+    });
+  }
 
-  // ---------- アルバム：選択削除 ----------
+  void _toggleSelect(int index) {
+    setState(() {
+      if (_selectedIndexes.contains(index)) {
+        _selectedIndexes.remove(index);
+      } else {
+        _selectedIndexes.add(index);
+      }
+      if (_selectedIndexes.isEmpty) {
+        _selectionMode = false;
+      }
+    });
+  }
+
+  void _exitSelectionMode() {
+    setState(() {
+      _selectionMode = false;
+      _selectedIndexes.clear();
+    });
+  }
+
   Future<void> _deleteSelectedImages() async {
     if (_selectedIndexes.isEmpty) return;
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('削除しますか？'),
+        content: Text('${_selectedIndexes.length}枚の写真を削除します。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('キャンセル'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('削除', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (ok != true) return;
 
     setState(() {
       final sorted = _selectedIndexes.toList()..sort((a, b) => b.compareTo(a));
@@ -268,33 +311,49 @@ class _BookPageState extends State<BookPage> {
 
   @override
   Widget build(BuildContext context) {
-    // Kindleのタップゾーン（狭める）
     final edge = MediaQuery.of(context).size.width * 0.10;
 
-    final title = _templeNameController.text.isEmpty
+    final baseTitle = _templeNameController.text.isEmpty
         ? '御朱印帳'
         : '御朱印帳（${_templeNameController.text}）';
 
+    final appTitle =
+        _selectionMode ? '${_selectedIndexes.length}枚選択' : baseTitle;
+
     return Scaffold(
       appBar: AppBar(
-        title: Text(title),
+        title: Text(appTitle),
         automaticallyImplyLeading: false,
-        actions: [
-          IconButton(
-            tooltip: '一覧',
-            icon: const Icon(Icons.list),
-            onPressed: () => Navigator.pop(context),
-          ),
-          IconButton(
-            icon: const Icon(Icons.share),
-            onPressed: _share,
-          ),
-        ],
+        actions: _selectionMode
+            ? [
+                IconButton(
+                  tooltip: '選択解除',
+                  icon: const Icon(Icons.close),
+                  onPressed: _exitSelectionMode,
+                ),
+                IconButton(
+                  tooltip: '削除',
+                  icon: const Icon(Icons.delete),
+                  onPressed:
+                      _selectedIndexes.isEmpty ? null : _deleteSelectedImages,
+                ),
+              ]
+            : [
+                IconButton(
+                  tooltip: '一覧',
+                  icon: const Icon(Icons.list),
+                  onPressed: () => Navigator.pop(context),
+                ),
+                IconButton(
+                  tooltip: '共有',
+                  icon: const Icon(Icons.share),
+                  onPressed: _share,
+                ),
+              ],
       ),
       body: Stack(
         children: [
           SingleChildScrollView(
-            // 全体はゆったり（中央寄りにしない）
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -312,7 +371,6 @@ class _BookPageState extends State<BookPage> {
                           decoration: const InputDecoration(
                             labelText: '参拝日',
                             suffixIcon: Icon(Icons.calendar_today),
-                            // ★ 右側だけ余白（誤タップ回避）
                             contentPadding: EdgeInsets.fromLTRB(12, 16, 48, 16),
                           ),
                         ),
@@ -332,7 +390,6 @@ class _BookPageState extends State<BookPage> {
                               icon: const Icon(Icons.location_on),
                               onPressed: _openInMaps,
                             ),
-                            // ★ 右側だけ余白（誤タップ回避）
                             contentPadding:
                                 const EdgeInsets.fromLTRB(12, 16, 48, 16),
                           ),
@@ -366,63 +423,26 @@ class _BookPageState extends State<BookPage> {
 
                 const SizedBox(height: 24),
 
-                /// アルバム（復活）
+                /// アルバム
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Row(
-                      children: [
-                        const Text(
-                          'アルバム',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        if (_selectionMode) ...[
-                          const SizedBox(width: 10),
-                          Text(
-                            '${_selectedIndexes.length}枚選択',
-                            style: const TextStyle(color: Colors.black54),
-                          ),
-                        ],
-                      ],
+                    const Text(
+                      'アルバム',
+                      style:
+                          TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                     ),
-                    Row(
-                      children: [
-                        if (_selectionMode)
-                          TextButton(
-                            onPressed: _selectedIndexes.isEmpty
-                                ? null
-                                : _deleteSelectedImages,
-                            child: const Text(
-                              '選択削除',
-                              style: TextStyle(color: Colors.red),
-                            ),
-                          ),
-                        TextButton(
-                          onPressed: () {
-                            setState(() {
-                              _selectionMode = !_selectionMode;
-                              _selectedIndexes.clear();
-                            });
-                          },
-                          child: Text(_selectionMode ? 'キャンセル' : '選択'),
-                        ),
-                        const SizedBox(width: 6),
-                        ElevatedButton.icon(
-                          onPressed: _selectionMode ? null : _pickImages,
-                          icon: const Icon(Icons.photo),
-                          label: const Text('写真追加'),
-                        ),
-                      ],
+                    ElevatedButton.icon(
+                      onPressed: _selectionMode ? null : _pickImages,
+                      icon: const Icon(Icons.photo),
+                      label: const Text('追加'),
                     ),
                   ],
                 ),
                 const SizedBox(height: 12),
 
                 if (_albumImages.isEmpty)
-                  const Text('まだ写真がありません。「写真追加」から追加できます。')
+                  const Text('まだ写真がありません。右の「追加」から入れられます。')
                 else
                   GridView.builder(
                     shrinkWrap: true,
@@ -435,19 +455,13 @@ class _BookPageState extends State<BookPage> {
                       mainAxisSpacing: 8,
                     ),
                     itemBuilder: (_, i) {
-                      final bytes = _albumImages[i];
                       final selected = _selectedIndexes.contains(i);
 
                       return GestureDetector(
+                        onLongPress: () => _enterSelectionMode(i),
                         onTap: () {
                           if (_selectionMode) {
-                            setState(() {
-                              if (selected) {
-                                _selectedIndexes.remove(i);
-                              } else {
-                                _selectedIndexes.add(i);
-                              }
-                            });
+                            _toggleSelect(i);
                           } else {
                             _openViewer(i);
                           }
@@ -463,7 +477,7 @@ class _BookPageState extends State<BookPage> {
                               child: ClipRRect(
                                 borderRadius: BorderRadius.circular(11),
                                 child: Image.memory(
-                                  bytes,
+                                  _albumImages[i],
                                   fit: BoxFit.cover,
                                   width: double.infinity,
                                   height: double.infinity,
@@ -476,8 +490,25 @@ class _BookPageState extends State<BookPage> {
                                   decoration: BoxDecoration(
                                     color: selected
                                         ? Colors.blue.withOpacity(0.35)
-                                        : Colors.blue.withOpacity(0.12),
+                                        : Colors.blue.withOpacity(0.10),
                                     borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                              ),
+                            if (selected)
+                              Positioned(
+                                right: 6,
+                                top: 6,
+                                child: Container(
+                                  padding: const EdgeInsets.all(4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.blue.withOpacity(0.9),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(
+                                    Icons.check,
+                                    size: 16,
+                                    color: Colors.white,
                                   ),
                                 ),
                               ),
@@ -521,7 +552,6 @@ class _BookPageState extends State<BookPage> {
   }
 }
 
-/// フルスクリーンビューア
 class _ImageViewer extends StatelessWidget {
   const _ImageViewer({required this.images, required this.index});
 
