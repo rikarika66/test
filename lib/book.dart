@@ -130,9 +130,8 @@ class _BookPageState extends State<BookPage> {
           currentIndex: prevIndex,
         ),
         transitionsBuilder: (_, animation, __, child) {
-          // ★ 前へ：左から入る（逆向き）
           final offset = Tween<Offset>(
-            begin: const Offset(-1.0, 0.0),
+            begin: const Offset(-1.0, 0.0), // 左から入る
             end: Offset.zero,
           ).animate(
             CurvedAnimation(parent: animation, curve: Curves.easeOut),
@@ -162,9 +161,8 @@ class _BookPageState extends State<BookPage> {
           currentIndex: nextIndex,
         ),
         transitionsBuilder: (_, animation, __, child) {
-          // ★ 次へ：右から入る
           final offset = Tween<Offset>(
-            begin: const Offset(1.0, 0.0),
+            begin: const Offset(1.0, 0.0), // 右から入る
             end: Offset.zero,
           ).animate(
             CurvedAnimation(parent: animation, curve: Curves.easeOut),
@@ -175,7 +173,7 @@ class _BookPageState extends State<BookPage> {
     );
   }
 
-  // ---------- 一覧に戻る（右上ボタン） ----------
+  // ---------- 一覧に戻る ----------
   void _backToList() {
     Navigator.of(context).pop();
   }
@@ -307,6 +305,9 @@ class _BookPageState extends State<BookPage> {
 
   @override
   Widget build(BuildContext context) {
+    // ★ 誤タップ対策：端タップゾーンを狭める（18% → 12%）
+    final edge = MediaQuery.of(context).size.width * 0.12;
+
     final title = _templeNameController.text.isEmpty
         ? '御朱印帳'
         : '御朱印帳（${_templeNameController.text}）';
@@ -314,9 +315,8 @@ class _BookPageState extends State<BookPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text(title),
-        automaticallyImplyLeading: false, // ←は出さない（Kindle方式）
+        automaticallyImplyLeading: false,
         actions: [
-          // 一覧に戻る
           IconButton(
             tooltip: '一覧',
             icon: const Icon(Icons.list),
@@ -331,7 +331,8 @@ class _BookPageState extends State<BookPage> {
       body: Stack(
         children: [
           SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
+            // ★ 左右に余白を増やして、カレンダー/ピン等を端から遠ざける
+            padding: EdgeInsets.fromLTRB(edge + 16, 16, edge + 16, 16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -519,7 +520,7 @@ class _BookPageState extends State<BookPage> {
             left: 0,
             top: 0,
             bottom: 0,
-            width: MediaQuery.of(context).size.width * 0.18,
+            width: edge,
             child: GestureDetector(
               behavior: HitTestBehavior.translucent,
               onTap: _canGoPrev ? _goPrevByLeftTap : null,
@@ -531,7 +532,7 @@ class _BookPageState extends State<BookPage> {
             right: 0,
             top: 0,
             bottom: 0,
-            width: MediaQuery.of(context).size.width * 0.18,
+            width: edge,
             child: GestureDetector(
               behavior: HitTestBehavior.translucent,
               onTap: _canGoNext ? _goNextByRightTap : null,
