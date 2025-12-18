@@ -162,9 +162,13 @@ class _BookPageState extends State<BookPage> {
     final bytes = result.files.first.bytes;
     if (bytes == null) return;
 
-    _albumImages.add(bytes);
+    // ★ 先にUIへ反映（即サムネが増える）
+    setState(() {
+      _albumImages.add(bytes);
+    });
+
+    // ★ 保存は後でOK
     await _saveNow();
-    if (mounted) setState(() {});
   }
 
   void _openViewer(int index) {

@@ -25,8 +25,16 @@ class _TempleListPageState extends State<TempleListPage> {
     setState(() => _entries = all);
   }
 
+  // ★ 追加：押した瞬間に一覧に反映 → 保存 → 詳細へ
   Future<void> _addNew() async {
     final entry = TempleStore.newEntry();
+
+    // 先にUI反映（即見える）
+    setState(() {
+      _entries.insert(0, entry);
+    });
+
+    // 保存は後でOK
     await TempleStore.upsert(entry);
     if (!mounted) return;
 
@@ -34,9 +42,12 @@ class _TempleListPageState extends State<TempleListPage> {
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => BookPage(templeId: entry.id)),
     );
+
+    // 戻ってきたら確定データで再読込
     await _reload();
   }
 
+  // ★ エラー原因だったメソッド：必ず必要
   Future<void> _open(String id) async {
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => BookPage(templeId: id)),
@@ -88,6 +99,7 @@ class _TempleListPageState extends State<TempleListPage> {
               separatorBuilder: (_, __) => const SizedBox(height: 10),
               itemBuilder: (context, index) {
                 final e = _entries[index];
+
                 final title = e.templeName.isEmpty ? '（寺院名未入力）' : e.templeName;
                 final sub = e.visitDateText.isEmpty
                     ? '参拝日：未入力'
@@ -95,8 +107,10 @@ class _TempleListPageState extends State<TempleListPage> {
 
                 return Card(
                   child: ListTile(
-                    title: Text(title,
-                        style: const TextStyle(fontWeight: FontWeight.bold)),
+                    title: Text(
+                      title,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
                     subtitle: Text(sub),
                     onTap: () => _open(e.id),
                     trailing: IconButton(
