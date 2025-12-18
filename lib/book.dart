@@ -8,16 +8,26 @@ import 'package:url_launcher/url_launcher.dart';
 import 'temple_store.dart';
 
 class BookPage extends StatefulWidget {
-  const BookPage({super.key, required this.templeId});
+  const BookPage({
+    super.key,
+    required this.templeId,
+    this.templeIds,
+    this.currentIndex,
+  });
 
   final String templeId;
+
+  /// 一覧の並び（右端“次”用）。渡されなければ次へは無効。
+  final List<String>? templeIds;
+
+  /// 一覧での現在位置（右端“次”用）
+  final int? currentIndex;
 
   @override
   State<BookPage> createState() => _BookPageState();
 }
 
 class _BookPageState extends State<BookPage> {
-  // 入力コントローラ
   final _templeNameController = TextEditingController();
   final _visitDateController = TextEditingController();
   final _memoController = TextEditingController();
@@ -26,12 +36,10 @@ class _BookPageState extends State<BookPage> {
   final _sectController = TextEditingController();
   final _honzonController = TextEditingController();
 
-  // データ
   final List<Uint8List> _albumImages = [];
   DateTime? _visitDate;
   TempleEntry? _entry;
 
-  // アルバム：選択削除
   bool _selectionMode = false;
   final Set<int> _selectedIndexes = <int>{};
 
@@ -92,10 +100,9 @@ class _BookPageState extends State<BookPage> {
     await TempleStore.upsert(entry);
   }
 
-  // ---------- Kindle操作：左端タップで戻る ----------
+  // ---------- Kindle操作 ----------
   void _popByLeftTap() {
     if (_selectionMode) {
-      // 選択モード中に誤って戻るのを防ぐ：まず解除
       setState(() {
         _selectionMode = false;
         _selectedIndexes.clear();
@@ -105,6 +112,44 @@ class _BookPageState extends State<BookPage> {
     if (Navigator.of(context).canPop()) {
       Navigator.of(context).pop();
     }
+  }
+
+  bool get _canGoNext {
+    final ids = widget.templeIds;
+    final idx = widget.currentIndex;
+    return ids != null && idx != null && idx >= 0 && idx < ids.length - 1;
+  }
+
+  Future<void> _goNextByRightTap() async {
+    if (_selectionMode) return; // 選択中は誤操作防止
+
+    if (!_canGoNext) return;
+
+    final ids = widget.templeIds!;
+    final nextIndex = widget.currentIndex! + 1;
+    final nextId = ids[nextIndex];
+
+    // スライドしつつ、同じスタックで次ページへ（置き換え）
+    await Navigator.of(context).pushReplacement(
+      PageRouteBuilder(
+        transitionDuration: const Duration(milliseconds: 350),
+        reverseTransitionDuration: const Duration(milliseconds: 350),
+        pageBuilder: (_, __, ___) => BookPage(
+          templeId: nextId,
+          templeIds: ids,
+          currentIndex: nextIndex,
+        ),
+        transitionsBuilder: (_, animation, __, child) {
+          final offset = Tween<Offset>(
+            begin: const Offset(1.0, 0.0),
+            end: Offset.zero,
+          ).animate(
+            CurvedAnimation(parent: animation, curve: Curves.easeOut),
+          );
+          return SlideTransition(position: offset, child: child);
+        },
+      ),
+    );
   }
 
   // ---------- 日付 ----------
@@ -138,7 +183,7 @@ class _BookPageState extends State<BookPage> {
     }
   }
 
-  // ---------- 地図（iOSアプリ向け：Apple→Googleフォールバック） ----------
+  // ---------- 地図 ----------
   Future<void> _openInMaps() async {
     final query = [
       _templeNameController.text.trim(),
@@ -172,7 +217,7 @@ class _BookPageState extends State<BookPage> {
     );
   }
 
-  // ---------- 画像：複数選択して一括追加 ----------
+  // ---------- 画像 ----------
   Future<void> _pickImage() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.image,
@@ -183,19 +228,15 @@ class _BookPageState extends State<BookPage> {
 
     final picked =
         result.files.map((f) => f.bytes).whereType<Uint8List>().toList();
-
     if (picked.isEmpty) return;
 
-    // 先にUI反映（即増える）
     setState(() {
       _albumImages.addAll(picked);
     });
 
-    // 保存はまとめて1回
     await _saveNow();
   }
 
-  // ---------- 画像：選択削除 ----------
   Future<void> _deleteSelectedImages() async {
     if (_selectedIndexes.isEmpty) return;
 
@@ -245,7 +286,7 @@ class _BookPageState extends State<BookPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text(title),
-        automaticallyImplyLeading: false, // ★ ←を消す（Kindle方式）
+        automaticallyImplyLeading: false, // ←消す
         actions: [
           IconButton(
             icon: const Icon(Icons.share),
@@ -255,13 +296,11 @@ class _BookPageState extends State<BookPage> {
       ),
       body: Stack(
         children: [
-          // 本体スクロール
           SingleChildScrollView(
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                /// 寺院プロフィール
                 Card(
                   child: Padding(
                     padding: const EdgeInsets.all(16),
@@ -310,20 +349,14 @@ class _BookPageState extends State<BookPage> {
                     ),
                   ),
                 ),
-
                 const SizedBox(height: 24),
-
-                /// メモ
                 TextField(
                   controller: _memoController,
                   maxLines: 4,
                   onChanged: (_) => _saveNow(),
                   decoration: const InputDecoration(labelText: '参拝メモ'),
                 ),
-
                 const SizedBox(height: 24),
-
-                /// アルバム（選択削除＋複数追加）
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -377,7 +410,6 @@ class _BookPageState extends State<BookPage> {
                   ],
                 ),
                 const SizedBox(height: 12),
-
                 if (_albumImages.isEmpty)
                   const Text('まだ写真がありません。「写真追加」から追加できます。')
                 else
@@ -428,8 +460,6 @@ class _BookPageState extends State<BookPage> {
                                 ),
                               ),
                             ),
-
-                            // 選択モード時のオーバーレイ
                             if (_selectionMode)
                               Positioned.fill(
                                 child: Container(
@@ -446,33 +476,32 @@ class _BookPageState extends State<BookPage> {
                       );
                     },
                   ),
-
                 const SizedBox(height: 40),
               ],
             ),
           ),
 
-          // ★ Kindle操作：左端タップで戻る（中身の操作を邪魔しない）
+          // 左端：戻る
           Positioned(
             left: 0,
             top: 0,
             bottom: 0,
-            width: MediaQuery.of(context).size.width * 0.18, // 左18%
+            width: MediaQuery.of(context).size.width * 0.18,
             child: GestureDetector(
               behavior: HitTestBehavior.translucent,
               onTap: _popByLeftTap,
             ),
           ),
 
-          // 右端は今は何もしない（必要なら“次へ”を割り当て）
+          // 右端：次の寺院へ（可能なときだけ）
           Positioned(
             right: 0,
             top: 0,
             bottom: 0,
             width: MediaQuery.of(context).size.width * 0.18,
-            child: const IgnorePointer(
-              ignoring: true,
-              child: SizedBox.expand(),
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTap: _canGoNext ? _goNextByRightTap : null,
             ),
           ),
         ],
@@ -481,7 +510,6 @@ class _BookPageState extends State<BookPage> {
   }
 }
 
-/// フルスクリーンビューア
 class _ImageViewer extends StatelessWidget {
   const _ImageViewer({required this.images, required this.index});
 

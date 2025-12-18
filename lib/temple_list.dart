@@ -45,10 +45,12 @@ class _TempleListPageState extends State<TempleListPage> {
     );
   }
 
+  List<String> _currentTempleIds() => _entries.map((e) => e.id).toList();
+
   Future<void> _addNew() async {
     final entry = TempleStore.newEntry();
 
-    // 先にUI反映
+    // 先にUI反映（即見える）
     setState(() {
       _entries.insert(0, entry);
     });
@@ -56,12 +58,32 @@ class _TempleListPageState extends State<TempleListPage> {
     await TempleStore.upsert(entry);
     if (!mounted) return;
 
-    await _pushSlide(BookPage(templeId: entry.id));
+    // 追加したらそのまま詳細へ（右端“次”用に ids/index を渡す）
+    final ids = _currentTempleIds();
+    final idx = ids.indexOf(entry.id);
+
+    await _pushSlide(
+      BookPage(
+        templeId: entry.id,
+        templeIds: ids,
+        currentIndex: idx,
+      ),
+    );
+
     await _reload();
   }
 
   Future<void> _open(String id) async {
-    await _pushSlide(BookPage(templeId: id));
+    final ids = _currentTempleIds();
+    final idx = ids.indexOf(id);
+
+    await _pushSlide(
+      BookPage(
+        templeId: id,
+        templeIds: ids,
+        currentIndex: idx,
+      ),
+    );
     await _reload();
   }
 
@@ -90,7 +112,6 @@ class _TempleListPageState extends State<TempleListPage> {
     }
   }
 
-  // Kindle風：左端タップで戻る
   void _popIfPossible() {
     if (Navigator.of(context).canPop()) {
       Navigator.of(context).pop();
@@ -111,7 +132,6 @@ class _TempleListPageState extends State<TempleListPage> {
       ),
       body: Stack(
         children: [
-          // 本体
           _entries.isEmpty
               ? const Center(
                   child: Text('まだ寺院ページがありません。\n右下の「寺院を追加」から作成できます。'),
@@ -145,27 +165,15 @@ class _TempleListPageState extends State<TempleListPage> {
                   },
                 ),
 
-          // Kindle操作：左端だけタップで戻る（中身の操作を邪魔しない）
+          // Kindle操作：左端タップで戻る
           Positioned(
             left: 0,
             top: 0,
             bottom: 0,
-            width: MediaQuery.of(context).size.width * 0.18, // 左18%
+            width: MediaQuery.of(context).size.width * 0.18,
             child: GestureDetector(
               behavior: HitTestBehavior.translucent,
               onTap: _popIfPossible,
-            ),
-          ),
-
-          // 右端（必要になったら“次へ”を割り当て可能）
-          Positioned(
-            right: 0,
-            top: 0,
-            bottom: 0,
-            width: MediaQuery.of(context).size.width * 0.18, // 右18%
-            child: const IgnorePointer(
-              ignoring: true,
-              child: SizedBox.expand(),
             ),
           ),
         ],
