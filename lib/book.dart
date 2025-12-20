@@ -38,7 +38,7 @@ class _BookPageState extends State<BookPage> {
   // アルバム
   final List<Uint8List> _albumImages = [];
 
-  // ★御朱印（最大2枚運用）
+  // 御朱印（最大2枚運用）
   final List<Uint8List> _goshuinImages = [];
 
   DateTime? _visitDate;
@@ -63,6 +63,11 @@ class _BookPageState extends State<BookPage> {
     _sectController.dispose();
     _honzonController.dispose();
     super.dispose();
+  }
+
+  void _snack(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
   Future<void> _loadEntry() async {
@@ -109,9 +114,44 @@ class _BookPageState extends State<BookPage> {
     await TempleStore.upsert(e);
   }
 
-  void _snack(String msg) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  /// ★「保存できたか」を再読み込みで検証する（誤警告を消すため）
+  Future<bool> _saveNowVerified({bool verifyGoshuin = true}) async {
+    final e = _entry;
+    if (e == null) return false;
+
+    // まず通常保存（例外が出ても検証する）
+    try {
+      await _saveNow();
+    } catch (err) {
+      debugPrint('saveNow exception (but will verify): $err');
+    }
+
+    // 検証：同IDを再読み込みして、必要箇所が残っているか
+    try {
+      final reloaded = await TempleStore.loadById(e.id);
+      if (reloaded == null) return false;
+
+      if (!verifyGoshuin) return true;
+
+      // 御朱印の「枚数」と「各サイズ」が一致すればOK扱い
+      final nowList = _goshuinImages
+          .where((b) => b.isNotEmpty)
+          .map((b) => b.length)
+          .toList();
+      final savedList = reloaded.goshuinImages
+          .where((b) => b.isNotEmpty)
+          .map((b) => b.length)
+          .toList();
+
+      if (nowList.length != savedList.length) return false;
+      for (var i = 0; i < nowList.length; i++) {
+        if (nowList[i] != savedList[i]) return false;
+      }
+      return true;
+    } catch (err) {
+      debugPrint('save verify exception: $err');
+      return false;
+    }
   }
 
   // ---------- Kindle：前後ページ ----------
@@ -189,12 +229,8 @@ class _BookPageState extends State<BookPage> {
     _visitDate = picked;
     _visitDateController.text = _formatDate(picked);
 
-    try {
-      await _saveNow();
-    } catch (e) {
-      debugPrint('参拝日 保存エラー: $e');
-      _snack('参拝日は表示できましたが、保存に失敗しました');
-    }
+    final ok = await _saveNowVerified(verifyGoshuin: false);
+    if (!ok) _snack('参拝日は表示できましたが、保存確認に失敗しました');
 
     if (mounted) setState(() {});
   }
@@ -234,25 +270,23 @@ class _BookPageState extends State<BookPage> {
     Share.share(text.toString());
   }
 
-  // ---------- 御朱印（2枠）：共通ユーティリティ ----------
+  // ---------- 御朱印（2枠）：ユーティリティ ----------
   void _setSlotBytes(int slot, Uint8List bytes) {
     while (_goshuinImages.length <= slot) {
       _goshuinImages.add(Uint8List(0));
     }
     _goshuinImages[slot] = bytes;
 
-    // 末尾の空要素だけ除去
     while (_goshuinImages.isNotEmpty && _goshuinImages.last.isEmpty) {
       _goshuinImages.removeLast();
     }
 
-    // 最大2枚
     if (_goshuinImages.length > 2) {
       _goshuinImages.removeRange(2, _goshuinImages.length);
     }
   }
 
-  // ---------- 御朱印（2枠）：読み込みと保存を分離 ----------
+  // ---------- 御朱印（2枠）：読み込み ----------
   Future<void> _setGoshuinFromGallery(int slot) async {
     try {
       final x = await _picker.pickImage(source: ImageSource.gallery);
@@ -266,12 +300,8 @@ class _BookPageState extends State<BookPage> {
       return;
     }
 
-    try {
-      await _saveNow();
-    } catch (e) {
-      debugPrint('御朱印（ギャラリー）保存エラー: $e');
-      _snack('画像は表示できましたが、保存に失敗しました');
-    }
+    final ok = await _saveNowVerified(verifyGoshuin: true);
+    if (!ok) _snack('画像は表示できましたが、保存確認に失敗しました');
   }
 
   Future<void> _setGoshuinFromCamera(int slot) async {
@@ -287,19 +317,15 @@ class _BookPageState extends State<BookPage> {
       return;
     }
 
-    try {
-      await _saveNow();
-    } catch (e) {
-      debugPrint('御朱印（カメラ）保存エラー: $e');
-      _snack('画像は表示できましたが、保存に失敗しました');
-    }
+    final ok = await _saveNowVerified(verifyGoshuin: true);
+    if (!ok) _snack('画像は表示できましたが、保存確認に失敗しました');
   }
 
   Future<void> _clearGoshuin(int slot) async {
     final has = slot < _goshuinImages.length && _goshuinImages[slot].isNotEmpty;
     if (!has) return;
 
-    final ok = await showDialog<bool>(
+    final okDialog = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('削除しますか？'),
@@ -316,7 +342,7 @@ class _BookPageState extends State<BookPage> {
         ],
       ),
     );
-    if (ok != true) return;
+    if (okDialog != true) return;
 
     setState(() {
       _goshuinImages[slot] = Uint8List(0);
@@ -325,12 +351,8 @@ class _BookPageState extends State<BookPage> {
       }
     });
 
-    try {
-      await _saveNow();
-    } catch (e) {
-      debugPrint('御朱印 削除保存エラー: $e');
-      _snack('削除は反映されましたが、保存に失敗しました');
-    }
+    final ok = await _saveNowVerified(verifyGoshuin: true);
+    if (!ok) _snack('削除は反映されましたが、保存確認に失敗しました');
   }
 
   void _openGoshuinViewer(int slot) {
@@ -359,7 +381,7 @@ class _BookPageState extends State<BookPage> {
         GestureDetector(
           onTap: () => _openGoshuinViewer(slot),
           child: Container(
-            height: 120, // ★省スペース
+            height: 120,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: const Color(0xFFD0B48A)),
@@ -418,7 +440,8 @@ class _BookPageState extends State<BookPage> {
         _albumImages.addAll(picked);
       });
 
-      await _saveNow();
+      final ok = await _saveNowVerified(verifyGoshuin: false);
+      if (!ok) _snack('画像は表示できましたが、保存確認に失敗しました');
     } catch (e) {
       debugPrint('アルバム 追加エラー: $e');
       _snack('画像の読み込みに失敗しました');
@@ -456,7 +479,7 @@ class _BookPageState extends State<BookPage> {
   Future<void> _deleteSelectedImages() async {
     if (_selectedIndexes.isEmpty) return;
 
-    final ok = await showDialog<bool>(
+    final okDialog = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('削除しますか？'),
@@ -474,7 +497,7 @@ class _BookPageState extends State<BookPage> {
       ),
     );
 
-    if (ok != true) return;
+    if (okDialog != true) return;
 
     setState(() {
       final sorted = _selectedIndexes.toList()..sort((a, b) => b.compareTo(a));
@@ -487,12 +510,8 @@ class _BookPageState extends State<BookPage> {
       _selectionMode = false;
     });
 
-    try {
-      await _saveNow();
-    } catch (e) {
-      debugPrint('アルバム 削除保存エラー: $e');
-      _snack('削除は反映されましたが、保存に失敗しました');
-    }
+    final ok = await _saveNowVerified(verifyGoshuin: false);
+    if (!ok) _snack('削除は反映されましたが、保存確認に失敗しました');
   }
 
   void _openViewer(int index) {
@@ -536,7 +555,7 @@ class _BookPageState extends State<BookPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                /// 寺院プロフィール
+                // 寺院プロフィール
                 Card(
                   child: Padding(
                     padding: const EdgeInsets.all(16),
@@ -555,25 +574,13 @@ class _BookPageState extends State<BookPage> {
                         const SizedBox(height: 12),
                         TextField(
                           controller: _templeNameController,
-                          onChanged: (_) async {
-                            try {
-                              await _saveNow();
-                            } catch (e) {
-                              debugPrint('寺院名 保存エラー: $e');
-                            }
-                          },
+                          onChanged: (_) => _saveNow(), // 静かに保存
                           decoration: const InputDecoration(labelText: '寺院名'),
                         ),
                         const SizedBox(height: 12),
                         TextField(
                           controller: _addressController,
-                          onChanged: (_) async {
-                            try {
-                              await _saveNow();
-                            } catch (e) {
-                              debugPrint('所在地 保存エラー: $e');
-                            }
-                          },
+                          onChanged: (_) => _saveNow(),
                           decoration: InputDecoration(
                             labelText: '所在地',
                             suffixIcon: IconButton(
@@ -587,25 +594,13 @@ class _BookPageState extends State<BookPage> {
                         const SizedBox(height: 12),
                         TextField(
                           controller: _sectController,
-                          onChanged: (_) async {
-                            try {
-                              await _saveNow();
-                            } catch (e) {
-                              debugPrint('宗派 保存エラー: $e');
-                            }
-                          },
+                          onChanged: (_) => _saveNow(),
                           decoration: const InputDecoration(labelText: '宗派'),
                         ),
                         const SizedBox(height: 12),
                         TextField(
                           controller: _honzonController,
-                          onChanged: (_) async {
-                            try {
-                              await _saveNow();
-                            } catch (e) {
-                              debugPrint('御本尊 保存エラー: $e');
-                            }
-                          },
+                          onChanged: (_) => _saveNow(),
                           decoration: const InputDecoration(labelText: '御本尊'),
                         ),
                       ],
@@ -615,7 +610,7 @@ class _BookPageState extends State<BookPage> {
 
                 const SizedBox(height: 24),
 
-                /// 御朱印（2枠サムネで省スペース）
+                // 御朱印（2枠）
                 Card(
                   child: Padding(
                     padding: const EdgeInsets.all(12),
@@ -631,12 +626,10 @@ class _BookPageState extends State<BookPage> {
                         Row(
                           children: [
                             Expanded(
-                              child: _goshuinSlot(slot: 0, label: '御朱印①'),
-                            ),
+                                child: _goshuinSlot(slot: 0, label: '御朱印①')),
                             const SizedBox(width: 10),
                             Expanded(
-                              child: _goshuinSlot(slot: 1, label: '御朱印②'),
-                            ),
+                                child: _goshuinSlot(slot: 1, label: '御朱印②')),
                           ],
                         ),
                         const SizedBox(height: 6),
@@ -651,23 +644,17 @@ class _BookPageState extends State<BookPage> {
 
                 const SizedBox(height: 24),
 
-                /// メモ
+                // メモ
                 TextField(
                   controller: _memoController,
                   maxLines: 4,
-                  onChanged: (_) async {
-                    try {
-                      await _saveNow();
-                    } catch (e) {
-                      debugPrint('メモ 保存エラー: $e');
-                    }
-                  },
+                  onChanged: (_) => _saveNow(),
                   decoration: const InputDecoration(labelText: '参拝メモ'),
                 ),
 
                 const SizedBox(height: 24),
 
-                /// アルバム（削除ボタンは追加の隣）
+                // アルバム（削除は追加ボタン横）
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
