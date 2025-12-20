@@ -37,14 +37,15 @@ class _BookPageState extends State<BookPage> {
 
   // アルバム
   final List<Uint8List> _albumImages = [];
+  bool _albumSelectionMode = false;
+  final Set<int> _albumSelectedIndexes = <int>{};
 
   // 御朱印（最大2枚運用）
   final List<Uint8List> _goshuinImages = [];
+  bool _goshuinSelectionMode = false;
+  final Set<int> _goshuinSelectedSlots = <int>{};
 
   DateTime? _visitDate;
-
-  bool _selectionMode = false;
-  final Set<int> _selectedIndexes = <int>{};
 
   final _picker = ImagePicker();
 
@@ -114,26 +115,23 @@ class _BookPageState extends State<BookPage> {
     await TempleStore.upsert(e);
   }
 
-  /// ★「保存できたか」を再読み込みで検証する（誤警告を消すため）
+  /// 保存→再読み込みで検証（誤SnackBar対策）
   Future<bool> _saveNowVerified({bool verifyGoshuin = true}) async {
     final e = _entry;
     if (e == null) return false;
 
-    // まず通常保存（例外が出ても検証する）
     try {
       await _saveNow();
     } catch (err) {
       debugPrint('saveNow exception (but will verify): $err');
     }
 
-    // 検証：同IDを再読み込みして、必要箇所が残っているか
     try {
       final reloaded = await TempleStore.loadById(e.id);
       if (reloaded == null) return false;
 
       if (!verifyGoshuin) return true;
 
-      // 御朱印の「枚数」と「各サイズ」が一致すればOK扱い
       final nowList = _goshuinImages
           .where((b) => b.isNotEmpty)
           .map((b) => b.length)
@@ -155,14 +153,16 @@ class _BookPageState extends State<BookPage> {
   }
 
   // ---------- Kindle：前後ページ ----------
+  bool get _blockPaging => _albumSelectionMode || _goshuinSelectionMode;
+
   bool get _canGoPrev =>
-      !_selectionMode &&
+      !_blockPaging &&
       widget.templeIds != null &&
       widget.currentIndex != null &&
       widget.currentIndex! > 0;
 
   bool get _canGoNext =>
-      !_selectionMode &&
+      !_blockPaging &&
       widget.templeIds != null &&
       widget.currentIndex != null &&
       widget.currentIndex! < widget.templeIds!.length - 1;
@@ -270,7 +270,13 @@ class _BookPageState extends State<BookPage> {
     Share.share(text.toString());
   }
 
-  // ---------- 御朱印（2枠）：ユーティリティ ----------
+  // ---------- 御朱印：スロット操作 ----------
+  Uint8List _getSlot(int slot) {
+    if (slot < 0) return Uint8List(0);
+    if (slot >= _goshuinImages.length) return Uint8List(0);
+    return _goshuinImages[slot];
+  }
+
   void _setSlotBytes(int slot, Uint8List bytes) {
     while (_goshuinImages.length <= slot) {
       _goshuinImages.add(Uint8List(0));
@@ -286,7 +292,6 @@ class _BookPageState extends State<BookPage> {
     }
   }
 
-  // ---------- 御朱印（2枠）：読み込み ----------
   Future<void> _setGoshuinFromGallery(int slot) async {
     try {
       final x = await _picker.pickImage(source: ImageSource.gallery);
@@ -321,15 +326,60 @@ class _BookPageState extends State<BookPage> {
     if (!ok) _snack('画像は表示できましたが、保存確認に失敗しました');
   }
 
-  Future<void> _clearGoshuin(int slot) async {
-    final has = slot < _goshuinImages.length && _goshuinImages[slot].isNotEmpty;
+  void _openGoshuinViewer(int slot) {
+    final bytes = _getSlot(slot);
+    if (bytes.isEmpty) return;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => _SingleImageViewer(bytes: bytes, title: '御朱印'),
+      ),
+    );
+  }
+
+  // ---------- 御朱印：長押し選択モード ----------
+  void _enterGoshuinSelection(int slot) {
+    final has = _getSlot(slot).isNotEmpty;
+    if (!has) return; // 空枠は選択させない（誤操作防止）
+    setState(() {
+      _goshuinSelectionMode = true;
+      _goshuinSelectedSlots
+        ..clear()
+        ..add(slot);
+    });
+  }
+
+  void _toggleGoshuinSelect(int slot) {
+    final has = _getSlot(slot).isNotEmpty;
     if (!has) return;
+    setState(() {
+      if (_goshuinSelectedSlots.contains(slot)) {
+        _goshuinSelectedSlots.remove(slot);
+      } else {
+        _goshuinSelectedSlots.add(slot);
+      }
+      if (_goshuinSelectedSlots.isEmpty) {
+        _goshuinSelectionMode = false;
+      }
+    });
+  }
+
+  void _exitGoshuinSelection() {
+    setState(() {
+      _goshuinSelectionMode = false;
+      _goshuinSelectedSlots.clear();
+    });
+  }
+
+  Future<void> _deleteSelectedGoshuin() async {
+    if (_goshuinSelectedSlots.isEmpty) return;
 
     final okDialog = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('削除しますか？'),
-        content: Text('御朱印${slot + 1}を削除します。'),
+        content: Text('${_goshuinSelectedSlots.length}枚の御朱印を削除します。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -345,32 +395,26 @@ class _BookPageState extends State<BookPage> {
     if (okDialog != true) return;
 
     setState(() {
-      _goshuinImages[slot] = Uint8List(0);
+      for (final slot in _goshuinSelectedSlots) {
+        if (slot >= 0 && slot < _goshuinImages.length) {
+          _goshuinImages[slot] = Uint8List(0);
+        }
+      }
       while (_goshuinImages.isNotEmpty && _goshuinImages.last.isEmpty) {
         _goshuinImages.removeLast();
       }
+      _goshuinSelectedSlots.clear();
+      _goshuinSelectionMode = false;
     });
 
     final ok = await _saveNowVerified(verifyGoshuin: true);
     if (!ok) _snack('削除は反映されましたが、保存確認に失敗しました');
   }
 
-  void _openGoshuinViewer(int slot) {
-    if (slot >= _goshuinImages.length) return;
-    final bytes = _goshuinImages[slot];
-    if (bytes.isEmpty) return;
-
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => _SingleImageViewer(bytes: bytes, title: '御朱印'),
-      ),
-    );
-  }
-
   Widget _goshuinSlot({required int slot, required String label}) {
-    final has = slot < _goshuinImages.length && _goshuinImages[slot].isNotEmpty;
-    final bytes = has ? _goshuinImages[slot] : null;
+    final bytes = _getSlot(slot);
+    final has = bytes.isNotEmpty;
+    final selected = _goshuinSelectedSlots.contains(slot);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -379,43 +423,84 @@ class _BookPageState extends State<BookPage> {
             style: const TextStyle(color: Colors.black54, fontSize: 12)),
         const SizedBox(height: 6),
         GestureDetector(
-          onTap: () => _openGoshuinViewer(slot),
-          child: Container(
-            height: 120,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFD0B48A)),
-              color: Colors.white,
-            ),
-            child: bytes == null
-                ? const Center(
-                    child: Icon(Icons.image_outlined, color: Colors.black38),
-                  )
-                : ClipRRect(
-                    borderRadius: BorderRadius.circular(11),
-                    child: Image.memory(bytes, fit: BoxFit.cover),
+          onLongPress: has ? () => _enterGoshuinSelection(slot) : null,
+          onTap: () {
+            if (_goshuinSelectionMode) {
+              _toggleGoshuinSelect(slot);
+            } else {
+              _openGoshuinViewer(slot);
+            }
+          },
+          child: Stack(
+            children: [
+              Container(
+                height: 120,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFD0B48A)),
+                  color: Colors.white,
+                ),
+                child: has
+                    ? ClipRRect(
+                        borderRadius: BorderRadius.circular(11),
+                        child: Image.memory(bytes, fit: BoxFit.cover),
+                      )
+                    : const Center(
+                        child:
+                            Icon(Icons.image_outlined, color: Colors.black38),
+                      ),
+              ),
+              if (_goshuinSelectionMode)
+                Positioned.fill(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: selected
+                          ? Colors.blue.withOpacity(0.35)
+                          : Colors.blue.withOpacity(0.10),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
+                ),
+              if (selected)
+                Positioned(
+                  right: 6,
+                  top: 6,
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.withOpacity(0.9),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.check,
+                      size: 16,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+            ],
           ),
         ),
         const SizedBox(height: 6),
+
+        // ★アイコン多すぎ問題対策：削除アイコンは出さない（長押し削除に統一）
         Row(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             IconButton(
               tooltip: '選ぶ',
               icon: const Icon(Icons.photo_library_outlined, size: 20),
-              onPressed: () => _setGoshuinFromGallery(slot),
+              onPressed: _goshuinSelectionMode
+                  ? null
+                  : () => _setGoshuinFromGallery(slot),
             ),
             IconButton(
               tooltip: '撮る',
               icon: const Icon(Icons.photo_camera_outlined, size: 20),
-              onPressed: () => _setGoshuinFromCamera(slot),
+              onPressed: _goshuinSelectionMode
+                  ? null
+                  : () => _setGoshuinFromCamera(slot),
             ),
-            if (has)
-              IconButton(
-                tooltip: '削除',
-                icon: const Icon(Icons.delete_outline, size: 20),
-                onPressed: () => _clearGoshuin(slot),
-              ),
           ],
         ),
       ],
@@ -449,41 +534,41 @@ class _BookPageState extends State<BookPage> {
   }
 
   // ---------- アルバム：選択モード ----------
-  void _enterSelectionMode(int index) {
+  void _enterAlbumSelectionMode(int index) {
     setState(() {
-      _selectionMode = true;
-      _selectedIndexes.add(index);
+      _albumSelectionMode = true;
+      _albumSelectedIndexes.add(index);
     });
   }
 
-  void _toggleSelect(int index) {
+  void _toggleAlbumSelect(int index) {
     setState(() {
-      if (_selectedIndexes.contains(index)) {
-        _selectedIndexes.remove(index);
+      if (_albumSelectedIndexes.contains(index)) {
+        _albumSelectedIndexes.remove(index);
       } else {
-        _selectedIndexes.add(index);
+        _albumSelectedIndexes.add(index);
       }
-      if (_selectedIndexes.isEmpty) {
-        _selectionMode = false;
+      if (_albumSelectedIndexes.isEmpty) {
+        _albumSelectionMode = false;
       }
     });
   }
 
-  void _exitSelectionMode() {
+  void _exitAlbumSelectionMode() {
     setState(() {
-      _selectionMode = false;
-      _selectedIndexes.clear();
+      _albumSelectionMode = false;
+      _albumSelectedIndexes.clear();
     });
   }
 
-  Future<void> _deleteSelectedImages() async {
-    if (_selectedIndexes.isEmpty) return;
+  Future<void> _deleteSelectedAlbumImages() async {
+    if (_albumSelectedIndexes.isEmpty) return;
 
     final okDialog = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('削除しますか？'),
-        content: Text('${_selectedIndexes.length}枚の写真を削除します。'),
+        content: Text('${_albumSelectedIndexes.length}枚の写真を削除します。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -496,18 +581,18 @@ class _BookPageState extends State<BookPage> {
         ],
       ),
     );
-
     if (okDialog != true) return;
 
     setState(() {
-      final sorted = _selectedIndexes.toList()..sort((a, b) => b.compareTo(a));
+      final sorted = _albumSelectedIndexes.toList()
+        ..sort((a, b) => b.compareTo(a));
       for (final i in sorted) {
         if (i >= 0 && i < _albumImages.length) {
           _albumImages.removeAt(i);
         }
       }
-      _selectedIndexes.clear();
-      _selectionMode = false;
+      _albumSelectedIndexes.clear();
+      _albumSelectionMode = false;
     });
 
     final ok = await _saveNowVerified(verifyGoshuin: false);
@@ -574,7 +659,7 @@ class _BookPageState extends State<BookPage> {
                         const SizedBox(height: 12),
                         TextField(
                           controller: _templeNameController,
-                          onChanged: (_) => _saveNow(), // 静かに保存
+                          onChanged: (_) => _saveNow(),
                           decoration: const InputDecoration(labelText: '寺院名'),
                         ),
                         const SizedBox(height: 12),
@@ -610,17 +695,37 @@ class _BookPageState extends State<BookPage> {
 
                 const SizedBox(height: 24),
 
-                // 御朱印（2枠）
+                // 御朱印（2枠：常に表示＆センターバランス）
                 Card(
                   child: Padding(
                     padding: const EdgeInsets.all(12),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          '御朱印（最大2つ）',
-                          style: TextStyle(
-                              fontSize: 18, fontWeight: FontWeight.bold),
+                        Row(
+                          children: [
+                            const Expanded(
+                              child: Text(
+                                '御朱印（最大2つ）',
+                                style: TextStyle(
+                                    fontSize: 18, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                            if (_goshuinSelectionMode) ...[
+                              IconButton(
+                                tooltip: '選択解除',
+                                icon: const Icon(Icons.close),
+                                onPressed: _exitGoshuinSelection,
+                              ),
+                              IconButton(
+                                tooltip: '削除',
+                                icon: const Icon(Icons.delete),
+                                onPressed: _goshuinSelectedSlots.isEmpty
+                                    ? null
+                                    : _deleteSelectedGoshuin,
+                              ),
+                            ],
+                          ],
                         ),
                         const SizedBox(height: 10),
                         Row(
@@ -634,7 +739,7 @@ class _BookPageState extends State<BookPage> {
                         ),
                         const SizedBox(height: 6),
                         const Text(
-                          'タップで拡大表示',
+                          'タップで拡大表示（削除は長押しで選択）',
                           style: TextStyle(color: Colors.black54, fontSize: 12),
                         ),
                       ],
@@ -654,7 +759,7 @@ class _BookPageState extends State<BookPage> {
 
                 const SizedBox(height: 24),
 
-                // アルバム（削除は追加ボタン横）
+                // アルバム（削除は追加の隣）
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -665,10 +770,10 @@ class _BookPageState extends State<BookPage> {
                           style: TextStyle(
                               fontSize: 18, fontWeight: FontWeight.bold),
                         ),
-                        if (_selectionMode) ...[
+                        if (_albumSelectionMode) ...[
                           const SizedBox(width: 10),
                           Text(
-                            '${_selectedIndexes.length}枚選択',
+                            '${_albumSelectedIndexes.length}枚選択',
                             style: const TextStyle(color: Colors.black54),
                           ),
                         ],
@@ -676,23 +781,23 @@ class _BookPageState extends State<BookPage> {
                     ),
                     Row(
                       children: [
-                        if (_selectionMode) ...[
+                        if (_albumSelectionMode) ...[
                           IconButton(
                             tooltip: '選択解除',
                             icon: const Icon(Icons.close),
-                            onPressed: _exitSelectionMode,
+                            onPressed: _exitAlbumSelectionMode,
                           ),
                           IconButton(
                             tooltip: '削除',
                             icon: const Icon(Icons.delete),
-                            onPressed: _selectedIndexes.isEmpty
+                            onPressed: _albumSelectedIndexes.isEmpty
                                 ? null
-                                : _deleteSelectedImages,
+                                : _deleteSelectedAlbumImages,
                           ),
                           const SizedBox(width: 6),
                         ],
                         ElevatedButton.icon(
-                          onPressed: _selectionMode ? null : _pickImages,
+                          onPressed: _albumSelectionMode ? null : _pickImages,
                           icon: const Icon(Icons.photo),
                           label: const Text('追加'),
                         ),
@@ -716,13 +821,13 @@ class _BookPageState extends State<BookPage> {
                       mainAxisSpacing: 8,
                     ),
                     itemBuilder: (_, i) {
-                      final selected = _selectedIndexes.contains(i);
+                      final selected = _albumSelectedIndexes.contains(i);
 
                       return GestureDetector(
-                        onLongPress: () => _enterSelectionMode(i),
+                        onLongPress: () => _enterAlbumSelectionMode(i),
                         onTap: () {
-                          if (_selectionMode) {
-                            _toggleSelect(i);
+                          if (_albumSelectionMode) {
+                            _toggleAlbumSelect(i);
                           } else {
                             _openViewer(i);
                           }
@@ -745,7 +850,7 @@ class _BookPageState extends State<BookPage> {
                                 ),
                               ),
                             ),
-                            if (_selectionMode)
+                            if (_albumSelectionMode)
                               Positioned.fill(
                                 child: Container(
                                   decoration: BoxDecoration(
