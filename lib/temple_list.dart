@@ -38,6 +38,7 @@ class _TempleListPageState extends State<TempleListPage> {
   }
 
   int _compareDateNullable(DateTime? a, DateTime? b, {required bool desc}) {
+    // null（未入力）は常に最後
     if (a == null && b == null) return 0;
     if (a == null) return 1;
     if (b == null) return -1;
@@ -172,30 +173,21 @@ class _TempleListPageState extends State<TempleListPage> {
 
   Widget _goshuinLeading(TempleEntry e) {
     final bytes = e.goshuinImage;
-    if (bytes == null) {
-      return Container(
-        width: 52,
-        height: 52,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: const Color(0xFFD0B48A)),
-          color: Colors.white,
-        ),
-        child: const Icon(Icons.image_outlined, color: Colors.black38),
-      );
-    }
 
     return Container(
-      width: 52,
-      height: 52,
+      width: 44,
+      height: 58, // ★縦長
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: const Color(0xFFD0B48A)),
+        color: Colors.white,
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(9),
-        child: Image.memory(bytes, fit: BoxFit.cover),
-      ),
+      child: bytes == null
+          ? const Icon(Icons.image_outlined, color: Colors.black38)
+          : ClipRRect(
+              borderRadius: BorderRadius.circular(9),
+              child: Image.memory(bytes, fit: BoxFit.cover), // ★雰囲気重視
+            ),
     );
   }
 
@@ -253,7 +245,7 @@ class _TempleListPageState extends State<TempleListPage> {
 
                 return Card(
                   child: ListTile(
-                    leading: _goshuinLeading(e), // ★ここが御朱印サムネ
+                    leading: _goshuinLeading(e),
                     title: Text(
                       title,
                       style: const TextStyle(fontWeight: FontWeight.bold),

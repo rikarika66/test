@@ -38,7 +38,7 @@ class _BookPageState extends State<BookPage> {
   // アルバム
   final List<Uint8List> _albumImages = [];
 
-  // ★御朱印（1枚）
+  // 御朱印（1枚）
   Uint8List? _goshuinImage;
 
   DateTime? _visitDate;
@@ -102,8 +102,6 @@ class _BookPageState extends State<BookPage> {
     e.honzon = _honzonController.text;
 
     e.albumImages = List<Uint8List>.from(_albumImages);
-
-    // ★御朱印
     e.goshuinImage = _goshuinImage;
 
     await TempleStore.upsert(e);
@@ -480,66 +478,81 @@ class _BookPageState extends State<BookPage> {
 
                 const SizedBox(height: 24),
 
-                /// ★御朱印（一覧に出す「顔」）
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      '御朱印',
-                      style:
-                          TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                    ),
-                    Row(
+                /// 御朱印（縦長サムネで省スペース）
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        TextButton.icon(
-                          onPressed: _setGoshuinFromGallery,
-                          icon: const Icon(Icons.photo_library_outlined),
-                          label: const Text('選ぶ'),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              '御朱印',
+                              style: TextStyle(
+                                  fontSize: 18, fontWeight: FontWeight.bold),
+                            ),
+                            Row(
+                              children: [
+                                IconButton(
+                                  tooltip: '選ぶ',
+                                  onPressed: _setGoshuinFromGallery,
+                                  icon:
+                                      const Icon(Icons.photo_library_outlined),
+                                ),
+                                IconButton(
+                                  tooltip: '撮る',
+                                  onPressed: _setGoshuinFromCamera,
+                                  icon: const Icon(Icons.photo_camera_outlined),
+                                ),
+                                if (_goshuinImage != null)
+                                  IconButton(
+                                    tooltip: '削除',
+                                    onPressed: _clearGoshuin,
+                                    icon: const Icon(Icons.delete_outline),
+                                  ),
+                              ],
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 6),
-                        TextButton.icon(
-                          onPressed: _setGoshuinFromCamera,
-                          icon: const Icon(Icons.photo_camera_outlined),
-                          label: const Text('撮る'),
-                        ),
-                        if (_goshuinImage != null) ...[
-                          const SizedBox(width: 6),
-                          IconButton(
-                            tooltip: '御朱印を削除',
-                            onPressed: _clearGoshuin,
-                            icon: const Icon(Icons.delete_outline),
+                        const SizedBox(height: 8),
+                        AspectRatio(
+                          aspectRatio: 3 / 4,
+                          child: GestureDetector(
+                            onTap: _openGoshuinViewer,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(14),
+                                border:
+                                    Border.all(color: const Color(0xFFD0B48A)),
+                                color: Colors.white,
+                              ),
+                              child: _goshuinImage == null
+                                  ? const Center(
+                                      child: Text(
+                                        'まだ御朱印がありません\n右上のボタンで追加できます',
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(color: Colors.black54),
+                                      ),
+                                    )
+                                  : ClipRRect(
+                                      borderRadius: BorderRadius.circular(13),
+                                      child: Image.memory(
+                                        _goshuinImage!,
+                                        fit: BoxFit.cover,
+                                      ),
+                                    ),
+                            ),
                           ),
-                        ],
+                        ),
+                        const SizedBox(height: 6),
+                        const Text(
+                          'タップで拡大表示',
+                          style: TextStyle(color: Colors.black54, fontSize: 12),
+                        ),
                       ],
                     ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                GestureDetector(
-                  onTap: _openGoshuinViewer,
-                  child: Container(
-                    width: double.infinity,
-                    height: 180,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: const Color(0xFFD0B48A)),
-                      color: Colors.white,
-                    ),
-                    child: _goshuinImage == null
-                        ? const Center(
-                            child: Text(
-                              'まだ御朱印がありません。\n「選ぶ」または「撮る」で追加できます。',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(color: Colors.black54),
-                            ),
-                          )
-                        : ClipRRect(
-                            borderRadius: BorderRadius.circular(13),
-                            child: Image.memory(
-                              _goshuinImage!,
-                              fit: BoxFit.cover,
-                            ),
-                          ),
                   ),
                 ),
 
@@ -555,7 +568,7 @@ class _BookPageState extends State<BookPage> {
 
                 const SizedBox(height: 24),
 
-                /// アルバム（★削除ボタンをここへ移動）
+                /// アルバム（削除ボタンは追加の隣）
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -564,9 +577,7 @@ class _BookPageState extends State<BookPage> {
                         const Text(
                           'アルバム',
                           style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
+                              fontSize: 18, fontWeight: FontWeight.bold),
                         ),
                         if (_selectionMode) ...[
                           const SizedBox(width: 10),
@@ -579,7 +590,6 @@ class _BookPageState extends State<BookPage> {
                     ),
                     Row(
                       children: [
-                        // ★選択モード時のみ：キャンセル（×）と削除（ゴミ箱）をここに出す
                         if (_selectionMode) ...[
                           IconButton(
                             tooltip: '選択解除',
