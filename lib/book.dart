@@ -38,8 +38,8 @@ class _BookPageState extends State<BookPage> {
   // アルバム
   final List<Uint8List> _albumImages = [];
 
-  // 御朱印（1枚）
-  Uint8List? _goshuinImage;
+  // ★御朱印（最大2枚運用）
+  final List<Uint8List> _goshuinImages = [];
 
   DateTime? _visitDate;
 
@@ -84,7 +84,9 @@ class _BookPageState extends State<BookPage> {
       ..clear()
       ..addAll(entry.albumImages);
 
-    _goshuinImage = entry.goshuinImage;
+    _goshuinImages
+      ..clear()
+      ..addAll(entry.goshuinImages);
 
     if (mounted) setState(() {});
   }
@@ -102,7 +104,9 @@ class _BookPageState extends State<BookPage> {
     e.honzon = _honzonController.text;
 
     e.albumImages = List<Uint8List>.from(_albumImages);
-    e.goshuinImage = _goshuinImage;
+
+    // ★御朱印（最大2枚）
+    e.goshuinImages = _goshuinImages.take(2).toList();
 
     await TempleStore.upsert(e);
   }
@@ -227,14 +231,16 @@ class _BookPageState extends State<BookPage> {
     Share.share(text.toString());
   }
 
-  // ---------- 御朱印（1枚）：設定 ----------
-  Future<void> _setGoshuinFromGallery() async {
+  // ---------- 御朱印（2枠）：追加/差し替え/削除 ----------
+  Future<void> _setGoshuinFromGallery(int slot) async {
     try {
       final x = await _picker.pickImage(source: ImageSource.gallery);
       if (x == null) return;
 
       final bytes = await x.readAsBytes();
-      setState(() => _goshuinImage = bytes);
+      setState(() {
+        _setSlotBytes(slot, bytes);
+      });
       await _saveNow();
     } catch (e) {
       debugPrint('御朱印（ギャラリー）エラー: $e');
@@ -245,13 +251,15 @@ class _BookPageState extends State<BookPage> {
     }
   }
 
-  Future<void> _setGoshuinFromCamera() async {
+  Future<void> _setGoshuinFromCamera(int slot) async {
     try {
       final x = await _picker.pickImage(source: ImageSource.camera);
       if (x == null) return;
 
       final bytes = await x.readAsBytes();
-      setState(() => _goshuinImage = bytes);
+      setState(() {
+        _setSlotBytes(slot, bytes);
+      });
       await _saveNow();
     } catch (e) {
       debugPrint('御朱印（カメラ）エラー: $e');
@@ -262,12 +270,32 @@ class _BookPageState extends State<BookPage> {
     }
   }
 
-  Future<void> _clearGoshuin() async {
+  void _setSlotBytes(int slot, Uint8List bytes) {
+    // slotまで埋める（空はUint8List(0)）
+    while (_goshuinImages.length <= slot) {
+      _goshuinImages.add(Uint8List(0));
+    }
+    _goshuinImages[slot] = bytes;
+
+    // 末尾の空を削る
+    while (_goshuinImages.isNotEmpty && _goshuinImages.last.isEmpty) {
+      _goshuinImages.removeLast();
+    }
+
+    // 最大2枚
+    if (_goshuinImages.length > 2) {
+      _goshuinImages.removeRange(2, _goshuinImages.length);
+    }
+  }
+
+  Future<void> _clearGoshuin(int slot) async {
+    if (slot >= _goshuinImages.length) return;
+
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('御朱印を削除しますか？'),
-        content: const Text('この寺院の御朱印画像を削除します。'),
+        title: const Text('削除しますか？'),
+        content: Text('御朱印${slot + 1}を削除します。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -280,20 +308,82 @@ class _BookPageState extends State<BookPage> {
         ],
       ),
     );
+
     if (ok != true) return;
 
-    setState(() => _goshuinImage = null);
+    setState(() {
+      _goshuinImages[slot] = Uint8List(0);
+      while (_goshuinImages.isNotEmpty && _goshuinImages.last.isEmpty) {
+        _goshuinImages.removeLast();
+      }
+    });
     await _saveNow();
   }
 
-  void _openGoshuinViewer() {
-    final bytes = _goshuinImage;
-    if (bytes == null) return;
+  void _openGoshuinViewer(int slot) {
+    if (slot >= _goshuinImages.length) return;
+    final bytes = _goshuinImages[slot];
+    if (bytes.isEmpty) return;
+
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => _SingleImageViewer(bytes: bytes, title: '御朱印'),
       ),
+    );
+  }
+
+  Widget _goshuinSlot({required int slot, required String label}) {
+    final has = slot < _goshuinImages.length && _goshuinImages[slot].isNotEmpty;
+    final bytes = has ? _goshuinImages[slot] : null;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label,
+            style: const TextStyle(color: Colors.black54, fontSize: 12)),
+        const SizedBox(height: 6),
+        GestureDetector(
+          onTap: () => _openGoshuinViewer(slot),
+          child: Container(
+            height: 120, // ★省スペース
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFD0B48A)),
+              color: Colors.white,
+            ),
+            child: bytes == null
+                ? const Center(
+                    child: Icon(Icons.image_outlined, color: Colors.black38),
+                  )
+                : ClipRRect(
+                    borderRadius: BorderRadius.circular(11),
+                    child: Image.memory(bytes, fit: BoxFit.cover),
+                  ),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Row(
+          children: [
+            IconButton(
+              tooltip: '選ぶ',
+              icon: const Icon(Icons.photo_library_outlined, size: 20),
+              onPressed: () => _setGoshuinFromGallery(slot),
+            ),
+            IconButton(
+              tooltip: '撮る',
+              icon: const Icon(Icons.photo_camera_outlined, size: 20),
+              onPressed: () => _setGoshuinFromCamera(slot),
+            ),
+            if (has)
+              IconButton(
+                tooltip: '削除',
+                icon: const Icon(Icons.delete_outline, size: 20),
+                onPressed: () => _clearGoshuin(slot),
+              ),
+          ],
+        ),
+      ],
     );
   }
 
@@ -478,73 +568,29 @@ class _BookPageState extends State<BookPage> {
 
                 const SizedBox(height: 24),
 
-                /// 御朱印（縦長サムネで省スペース）
+                /// 御朱印（2枠サムネで省スペース）
                 Card(
                   child: Padding(
                     padding: const EdgeInsets.all(12),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        const Text(
+                          '御朱印（最大2つ）',
+                          style: TextStyle(
+                              fontSize: 18, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 10),
                         Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            const Text(
-                              '御朱印',
-                              style: TextStyle(
-                                  fontSize: 18, fontWeight: FontWeight.bold),
+                            Expanded(
+                              child: _goshuinSlot(slot: 0, label: '御朱印①'),
                             ),
-                            Row(
-                              children: [
-                                IconButton(
-                                  tooltip: '選ぶ',
-                                  onPressed: _setGoshuinFromGallery,
-                                  icon:
-                                      const Icon(Icons.photo_library_outlined),
-                                ),
-                                IconButton(
-                                  tooltip: '撮る',
-                                  onPressed: _setGoshuinFromCamera,
-                                  icon: const Icon(Icons.photo_camera_outlined),
-                                ),
-                                if (_goshuinImage != null)
-                                  IconButton(
-                                    tooltip: '削除',
-                                    onPressed: _clearGoshuin,
-                                    icon: const Icon(Icons.delete_outline),
-                                  ),
-                              ],
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: _goshuinSlot(slot: 1, label: '御朱印②'),
                             ),
                           ],
-                        ),
-                        const SizedBox(height: 8),
-                        AspectRatio(
-                          aspectRatio: 3 / 4,
-                          child: GestureDetector(
-                            onTap: _openGoshuinViewer,
-                            child: Container(
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(14),
-                                border:
-                                    Border.all(color: const Color(0xFFD0B48A)),
-                                color: Colors.white,
-                              ),
-                              child: _goshuinImage == null
-                                  ? const Center(
-                                      child: Text(
-                                        'まだ御朱印がありません\n右上のボタンで追加できます',
-                                        textAlign: TextAlign.center,
-                                        style: TextStyle(color: Colors.black54),
-                                      ),
-                                    )
-                                  : ClipRRect(
-                                      borderRadius: BorderRadius.circular(13),
-                                      child: Image.memory(
-                                        _goshuinImage!,
-                                        fit: BoxFit.cover,
-                                      ),
-                                    ),
-                            ),
-                          ),
                         ),
                         const SizedBox(height: 6),
                         const Text(

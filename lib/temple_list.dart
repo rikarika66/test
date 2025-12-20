@@ -38,7 +38,7 @@ class _TempleListPageState extends State<TempleListPage> {
   }
 
   int _compareDateNullable(DateTime? a, DateTime? b, {required bool desc}) {
-    // null（未入力）は常に最後
+    // null（未入力）は最後
     if (a == null && b == null) return 0;
     if (a == null) return 1;
     if (b == null) return -1;
@@ -172,11 +172,11 @@ class _TempleListPageState extends State<TempleListPage> {
   }
 
   Widget _goshuinLeading(TempleEntry e) {
-    final bytes = e.goshuinImage;
+    final bytes = e.goshuinImages.isNotEmpty ? e.goshuinImages.first : null;
 
     return Container(
-      width: 44,
-      height: 58, // ★縦長
+      width: 50, // ★少し大きく
+      height: 66, // ★少し大きく（縦長）
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: const Color(0xFFD0B48A)),
@@ -186,7 +186,7 @@ class _TempleListPageState extends State<TempleListPage> {
           ? const Icon(Icons.image_outlined, color: Colors.black38)
           : ClipRRect(
               borderRadius: BorderRadius.circular(9),
-              child: Image.memory(bytes, fit: BoxFit.cover), // ★雰囲気重視
+              child: Image.memory(bytes, fit: BoxFit.cover),
             ),
     );
   }

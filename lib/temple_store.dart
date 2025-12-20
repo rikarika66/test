@@ -13,8 +13,8 @@ class TempleEntry {
     required this.honzon,
     required this.memo,
     required this.albumImages,
+    required this.goshuinImages, // ★御朱印（最大2枚）
     required this.updatedAtMillis,
-    this.goshuinImage, // ★追加：御朱印（一覧用サムネ）
   });
 
   final String id;
@@ -28,8 +28,8 @@ class TempleEntry {
   /// アルバム
   List<Uint8List> albumImages;
 
-  /// ★御朱印（1枚）…一覧の先頭に表示する想定
-  Uint8List? goshuinImage;
+  /// ★御朱印（最大2枚運用）
+  List<Uint8List> goshuinImages;
 
   int updatedAtMillis;
 
@@ -43,28 +43,48 @@ class TempleEntry {
         'memo': memo,
         'albumImages': albumImages.map((e) => base64Encode(e)).toList(),
 
-        // ★追加（nullなら保存しない/してもOKだが分岐）
-        'goshuinImage':
-            goshuinImage == null ? null : base64Encode(goshuinImage!),
+        // ★追加：複数
+        'goshuinImages': goshuinImages.map((e) => base64Encode(e)).toList(),
 
         'updatedAtMillis': updatedAtMillis,
       };
 
   static TempleEntry fromJson(Map<String, dynamic> json) {
-    final images = (json['albumImages'] as List<dynamic>? ?? [])
-        .map((e) => base64Decode(e as String))
+    final album = (json['albumImages'] as List<dynamic>? ?? [])
+        .whereType<String>()
+        .map((s) {
+          try {
+            return base64Decode(s);
+          } catch (_) {
+            return Uint8List(0);
+          }
+        })
+        .where((b) => b.isNotEmpty)
         .toList();
 
-    // ★後方互換：古いデータには goshuinImage が無いので null
-    final goshuinStr = json['goshuinImage'];
-    Uint8List? goshuinBytes;
-    if (goshuinStr is String && goshuinStr.isNotEmpty) {
+    // ★新形式：goshuinImages
+    final gList = (json['goshuinImages'] as List<dynamic>? ?? [])
+        .whereType<String>()
+        .map((s) {
+          try {
+            return base64Decode(s);
+          } catch (_) {
+            return Uint8List(0);
+          }
+        })
+        .where((b) => b.isNotEmpty)
+        .toList();
+
+    // ★旧形式：goshuinImage（単体）にも後方互換で対応
+    final old = json['goshuinImage'];
+    if (gList.isEmpty && old is String && old.isNotEmpty) {
       try {
-        goshuinBytes = base64Decode(goshuinStr);
-      } catch (_) {
-        goshuinBytes = null;
-      }
+        gList.add(base64Decode(old));
+      } catch (_) {}
     }
+
+    // ★運用：最大2枚に制限
+    final normalized = gList.take(2).toList();
 
     return TempleEntry(
       id: (json['id'] as String?) ?? _genId(),
@@ -74,8 +94,8 @@ class TempleEntry {
       sect: (json['sect'] as String?) ?? '',
       honzon: (json['honzon'] as String?) ?? '',
       memo: (json['memo'] as String?) ?? '',
-      albumImages: images,
-      goshuinImage: goshuinBytes,
+      albumImages: album,
+      goshuinImages: normalized,
       updatedAtMillis: (json['updatedAtMillis'] as int?) ??
           DateTime.now().millisecondsSinceEpoch,
     );
@@ -99,7 +119,7 @@ class TempleStore {
           .map((e) => TempleEntry.fromJson(e as Map<String, dynamic>))
           .toList();
 
-      // 新しい順で一覧に出す（※ temple_list.dart 側で並び替えするならそこで上書き）
+      // 新しい順（※並び替えは一覧側でも可）
       list.sort((a, b) => b.updatedAtMillis.compareTo(a.updatedAtMillis));
       return list;
     } catch (_) {
@@ -154,7 +174,7 @@ class TempleStore {
       honzon: '',
       memo: '',
       albumImages: [],
-      goshuinImage: null, // ★追加
+      goshuinImages: [], // ★追加
       updatedAtMillis: DateTime.now().millisecondsSinceEpoch,
     );
   }
