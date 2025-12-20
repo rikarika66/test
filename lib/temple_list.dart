@@ -38,7 +38,6 @@ class _TempleListPageState extends State<TempleListPage> {
   }
 
   int _compareDateNullable(DateTime? a, DateTime? b, {required bool desc}) {
-    // null（未入力）は常に最後
     if (a == null && b == null) return 0;
     if (a == null) return 1;
     if (b == null) return -1;
@@ -76,7 +75,6 @@ class _TempleListPageState extends State<TempleListPage> {
     setState(() => _entries = all);
   }
 
-  // Kindle風：右→左スライドでpush
   Future<void> _pushSlide(Widget page) async {
     await Navigator.of(context).push(
       PageRouteBuilder(
@@ -161,12 +159,6 @@ class _TempleListPageState extends State<TempleListPage> {
     }
   }
 
-  void _popIfPossible() {
-    if (Navigator.of(context).canPop()) {
-      Navigator.of(context).pop();
-    }
-  }
-
   String _sortLabel(TempleSortMode m) {
     switch (m) {
       case TempleSortMode.visitDateDesc:
@@ -178,10 +170,37 @@ class _TempleListPageState extends State<TempleListPage> {
     }
   }
 
+  Widget _goshuinLeading(TempleEntry e) {
+    final bytes = e.goshuinImage;
+    if (bytes == null) {
+      return Container(
+        width: 52,
+        height: 52,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: const Color(0xFFD0B48A)),
+          color: Colors.white,
+        ),
+        child: const Icon(Icons.image_outlined, color: Colors.black38),
+      );
+    }
+
+    return Container(
+      width: 52,
+      height: 52,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFD0B48A)),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(9),
+        child: Image.memory(bytes, fit: BoxFit.cover),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final edge = MediaQuery.of(context).size.width * 0.10;
-
     return Scaffold(
       appBar: AppBar(
         title: Text('寺院一覧（${_sortLabel(_sortMode)}）'),
@@ -217,53 +236,38 @@ class _TempleListPageState extends State<TempleListPage> {
         icon: const Icon(Icons.add),
         label: const Text('寺院を追加'),
       ),
-      body: Stack(
-        children: [
-          _entries.isEmpty
-              ? const Center(
-                  child: Text('まだ寺院ページがありません。\n右下の「寺院を追加」から作成できます。'),
-                )
-              : ListView.separated(
-                  padding: const EdgeInsets.all(12),
-                  itemCount: _entries.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 10),
-                  itemBuilder: (context, index) {
-                    final e = _entries[index];
-                    final title =
-                        e.templeName.isEmpty ? '（寺院名未入力）' : e.templeName;
-                    final sub = e.visitDateText.isEmpty
-                        ? '参拝日：未入力'
-                        : '参拝日：${e.visitDateText}';
+      body: _entries.isEmpty
+          ? const Center(
+              child: Text('まだ寺院ページがありません。\n右下の「寺院を追加」から作成できます。'),
+            )
+          : ListView.separated(
+              padding: const EdgeInsets.all(12),
+              itemCount: _entries.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 10),
+              itemBuilder: (context, index) {
+                final e = _entries[index];
+                final title = e.templeName.isEmpty ? '（寺院名未入力）' : e.templeName;
+                final sub = e.visitDateText.isEmpty
+                    ? '参拝日：未入力'
+                    : '参拝日：${e.visitDateText}';
 
-                    return Card(
-                      child: ListTile(
-                        title: Text(title,
-                            style:
-                                const TextStyle(fontWeight: FontWeight.bold)),
-                        subtitle: Text(sub),
-                        onTap: () => _open(e.id),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.delete_outline),
-                          onPressed: () => _delete(e.id, title),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-
-          // Kindle操作：左端タップで戻る（このページに前がある場合のみ）
-          Positioned(
-            left: 0,
-            top: 0,
-            bottom: 0,
-            width: edge,
-            child: GestureDetector(
-              behavior: HitTestBehavior.translucent,
-              onTap: _popIfPossible,
+                return Card(
+                  child: ListTile(
+                    leading: _goshuinLeading(e), // ★ここが御朱印サムネ
+                    title: Text(
+                      title,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    subtitle: Text(sub),
+                    onTap: () => _open(e.id),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.delete_outline),
+                      onPressed: () => _delete(e.id, title),
+                    ),
+                  ),
+                );
+              },
             ),
-          ),
-        ],
-      ),
     );
   }
 }

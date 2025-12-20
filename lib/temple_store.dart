@@ -14,6 +14,7 @@ class TempleEntry {
     required this.memo,
     required this.albumImages,
     required this.updatedAtMillis,
+    this.goshuinImage, // ★追加：御朱印（一覧用サムネ）
   });
 
   final String id;
@@ -23,7 +24,13 @@ class TempleEntry {
   String sect;
   String honzon;
   String memo;
+
+  /// アルバム
   List<Uint8List> albumImages;
+
+  /// ★御朱印（1枚）…一覧の先頭に表示する想定
+  Uint8List? goshuinImage;
+
   int updatedAtMillis;
 
   Map<String, dynamic> toJson() => {
@@ -35,6 +42,11 @@ class TempleEntry {
         'honzon': honzon,
         'memo': memo,
         'albumImages': albumImages.map((e) => base64Encode(e)).toList(),
+
+        // ★追加（nullなら保存しない/してもOKだが分岐）
+        'goshuinImage':
+            goshuinImage == null ? null : base64Encode(goshuinImage!),
+
         'updatedAtMillis': updatedAtMillis,
       };
 
@@ -42,6 +54,17 @@ class TempleEntry {
     final images = (json['albumImages'] as List<dynamic>? ?? [])
         .map((e) => base64Decode(e as String))
         .toList();
+
+    // ★後方互換：古いデータには goshuinImage が無いので null
+    final goshuinStr = json['goshuinImage'];
+    Uint8List? goshuinBytes;
+    if (goshuinStr is String && goshuinStr.isNotEmpty) {
+      try {
+        goshuinBytes = base64Decode(goshuinStr);
+      } catch (_) {
+        goshuinBytes = null;
+      }
+    }
 
     return TempleEntry(
       id: (json['id'] as String?) ?? _genId(),
@@ -52,6 +75,7 @@ class TempleEntry {
       honzon: (json['honzon'] as String?) ?? '',
       memo: (json['memo'] as String?) ?? '',
       albumImages: images,
+      goshuinImage: goshuinBytes,
       updatedAtMillis: (json['updatedAtMillis'] as int?) ??
           DateTime.now().millisecondsSinceEpoch,
     );
@@ -75,7 +99,7 @@ class TempleStore {
           .map((e) => TempleEntry.fromJson(e as Map<String, dynamic>))
           .toList();
 
-      // 新しい順で一覧に出す
+      // 新しい順で一覧に出す（※ temple_list.dart 側で並び替えするならそこで上書き）
       list.sort((a, b) => b.updatedAtMillis.compareTo(a.updatedAtMillis));
       return list;
     } catch (_) {
@@ -130,6 +154,7 @@ class TempleStore {
       honzon: '',
       memo: '',
       albumImages: [],
+      goshuinImage: null, // ★追加
       updatedAtMillis: DateTime.now().millisecondsSinceEpoch,
     );
   }
