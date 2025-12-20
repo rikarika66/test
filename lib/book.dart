@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -33,11 +34,19 @@ class _BookPageState extends State<BookPage> {
   final _honzonController = TextEditingController();
 
   TempleEntry? _entry;
+
+  // アルバム
   final List<Uint8List> _albumImages = [];
+
+  // ★御朱印（1枚）
+  Uint8List? _goshuinImage;
+
   DateTime? _visitDate;
 
   bool _selectionMode = false;
   final Set<int> _selectedIndexes = <int>{};
+
+  final _picker = ImagePicker();
 
   @override
   void initState() {
@@ -75,6 +84,8 @@ class _BookPageState extends State<BookPage> {
       ..clear()
       ..addAll(entry.albumImages);
 
+    _goshuinImage = entry.goshuinImage;
+
     if (mounted) setState(() {});
   }
 
@@ -91,6 +102,9 @@ class _BookPageState extends State<BookPage> {
     e.honzon = _honzonController.text;
 
     e.albumImages = List<Uint8List>.from(_albumImages);
+
+    // ★御朱印
+    e.goshuinImage = _goshuinImage;
 
     await TempleStore.upsert(e);
   }
@@ -215,6 +229,76 @@ class _BookPageState extends State<BookPage> {
     Share.share(text.toString());
   }
 
+  // ---------- 御朱印（1枚）：設定 ----------
+  Future<void> _setGoshuinFromGallery() async {
+    try {
+      final x = await _picker.pickImage(source: ImageSource.gallery);
+      if (x == null) return;
+
+      final bytes = await x.readAsBytes();
+      setState(() => _goshuinImage = bytes);
+      await _saveNow();
+    } catch (e) {
+      debugPrint('御朱印（ギャラリー）エラー: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('画像の読み込みに失敗しました')),
+      );
+    }
+  }
+
+  Future<void> _setGoshuinFromCamera() async {
+    try {
+      final x = await _picker.pickImage(source: ImageSource.camera);
+      if (x == null) return;
+
+      final bytes = await x.readAsBytes();
+      setState(() => _goshuinImage = bytes);
+      await _saveNow();
+    } catch (e) {
+      debugPrint('御朱印（カメラ）エラー: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('カメラの起動に失敗しました')),
+      );
+    }
+  }
+
+  Future<void> _clearGoshuin() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('御朱印を削除しますか？'),
+        content: const Text('この寺院の御朱印画像を削除します。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('キャンセル'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('削除', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
+    setState(() => _goshuinImage = null);
+    await _saveNow();
+  }
+
+  void _openGoshuinViewer() {
+    final bytes = _goshuinImage;
+    if (bytes == null) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => _SingleImageViewer(bytes: bytes, title: '御朱印'),
+      ),
+    );
+  }
+
   // ---------- アルバム：複数追加 ----------
   Future<void> _pickImages() async {
     final result = await FilePicker.platform.pickFiles(
@@ -317,39 +401,22 @@ class _BookPageState extends State<BookPage> {
         ? '御朱印帳'
         : '御朱印帳（${_templeNameController.text}）';
 
-    final appTitle =
-        _selectionMode ? '${_selectedIndexes.length}枚選択' : baseTitle;
-
     return Scaffold(
       appBar: AppBar(
-        title: Text(appTitle),
+        title: Text(baseTitle),
         automaticallyImplyLeading: false,
-        actions: _selectionMode
-            ? [
-                IconButton(
-                  tooltip: '選択解除',
-                  icon: const Icon(Icons.close),
-                  onPressed: _exitSelectionMode,
-                ),
-                IconButton(
-                  tooltip: '削除',
-                  icon: const Icon(Icons.delete),
-                  onPressed:
-                      _selectedIndexes.isEmpty ? null : _deleteSelectedImages,
-                ),
-              ]
-            : [
-                IconButton(
-                  tooltip: '一覧',
-                  icon: const Icon(Icons.list),
-                  onPressed: () => Navigator.pop(context),
-                ),
-                IconButton(
-                  tooltip: '共有',
-                  icon: const Icon(Icons.share),
-                  onPressed: _share,
-                ),
-              ],
+        actions: [
+          IconButton(
+            tooltip: '一覧',
+            icon: const Icon(Icons.list),
+            onPressed: () => Navigator.pop(context),
+          ),
+          IconButton(
+            tooltip: '共有',
+            icon: const Icon(Icons.share),
+            onPressed: _share,
+          ),
+        ],
       ),
       body: Stack(
         children: [
@@ -413,6 +480,71 @@ class _BookPageState extends State<BookPage> {
 
                 const SizedBox(height: 24),
 
+                /// ★御朱印（一覧に出す「顔」）
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      '御朱印',
+                      style:
+                          TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                    Row(
+                      children: [
+                        TextButton.icon(
+                          onPressed: _setGoshuinFromGallery,
+                          icon: const Icon(Icons.photo_library_outlined),
+                          label: const Text('選ぶ'),
+                        ),
+                        const SizedBox(width: 6),
+                        TextButton.icon(
+                          onPressed: _setGoshuinFromCamera,
+                          icon: const Icon(Icons.photo_camera_outlined),
+                          label: const Text('撮る'),
+                        ),
+                        if (_goshuinImage != null) ...[
+                          const SizedBox(width: 6),
+                          IconButton(
+                            tooltip: '御朱印を削除',
+                            onPressed: _clearGoshuin,
+                            icon: const Icon(Icons.delete_outline),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                GestureDetector(
+                  onTap: _openGoshuinViewer,
+                  child: Container(
+                    width: double.infinity,
+                    height: 180,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: const Color(0xFFD0B48A)),
+                      color: Colors.white,
+                    ),
+                    child: _goshuinImage == null
+                        ? const Center(
+                            child: Text(
+                              'まだ御朱印がありません。\n「選ぶ」または「撮る」で追加できます。',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: Colors.black54),
+                            ),
+                          )
+                        : ClipRRect(
+                            borderRadius: BorderRadius.circular(13),
+                            child: Image.memory(
+                              _goshuinImage!,
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                  ),
+                ),
+
+                const SizedBox(height: 24),
+
                 /// メモ
                 TextField(
                   controller: _memoController,
@@ -423,19 +555,52 @@ class _BookPageState extends State<BookPage> {
 
                 const SizedBox(height: 24),
 
-                /// アルバム
+                /// アルバム（★削除ボタンをここへ移動）
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text(
-                      'アルバム',
-                      style:
-                          TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    Row(
+                      children: [
+                        const Text(
+                          'アルバム',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        if (_selectionMode) ...[
+                          const SizedBox(width: 10),
+                          Text(
+                            '${_selectedIndexes.length}枚選択',
+                            style: const TextStyle(color: Colors.black54),
+                          ),
+                        ],
+                      ],
                     ),
-                    ElevatedButton.icon(
-                      onPressed: _selectionMode ? null : _pickImages,
-                      icon: const Icon(Icons.photo),
-                      label: const Text('追加'),
+                    Row(
+                      children: [
+                        // ★選択モード時のみ：キャンセル（×）と削除（ゴミ箱）をここに出す
+                        if (_selectionMode) ...[
+                          IconButton(
+                            tooltip: '選択解除',
+                            icon: const Icon(Icons.close),
+                            onPressed: _exitSelectionMode,
+                          ),
+                          IconButton(
+                            tooltip: '削除',
+                            icon: const Icon(Icons.delete),
+                            onPressed: _selectedIndexes.isEmpty
+                                ? null
+                                : _deleteSelectedImages,
+                          ),
+                          const SizedBox(width: 6),
+                        ],
+                        ElevatedButton.icon(
+                          onPressed: _selectionMode ? null : _pickImages,
+                          icon: const Icon(Icons.photo),
+                          label: const Text('追加'),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -575,6 +740,30 @@ class _ImageViewer extends StatelessWidget {
           child: InteractiveViewer(
             child: Image.memory(images[i]),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SingleImageViewer extends StatelessWidget {
+  const _SingleImageViewer({required this.bytes, required this.title});
+
+  final Uint8List bytes;
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        title: Text(title),
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+      ),
+      body: Center(
+        child: InteractiveViewer(
+          child: Image.memory(bytes),
         ),
       ),
     );
