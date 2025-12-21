@@ -337,6 +337,36 @@ class _BookPageState extends State<BookPage> {
     );
   }
 
+  /// 画像が空のとき：タップで「写真ライブラリ / カメラ」を選ばせる（元の操作感に戻す）
+  Future<void> _chooseGoshuinSource(int slot) async {
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      builder: (_) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('写真ライブラリ'),
+              onTap: () => Navigator.pop(context, 'gallery'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_camera_outlined),
+              title: const Text('カメラ'),
+              onTap: () => Navigator.pop(context, 'camera'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (result == 'gallery') {
+      await _setGoshuinFromGallery(slot);
+    } else if (result == 'camera') {
+      await _setGoshuinFromCamera(slot);
+    }
+  }
+
   // ---------- 御朱印：長押しで🗑️表示（カード内右上） ----------
   void _showGoshuinTrash(int slot) {
     final has = _getSlot(slot).isNotEmpty;
@@ -399,13 +429,21 @@ class _BookPageState extends State<BookPage> {
         const SizedBox(height: 6),
         GestureDetector(
           onLongPress: has ? () => _showGoshuinTrash(slot) : null,
-          onTap: () {
-            // 🗑️表示中は、まず閉じる（誤タップで拡大しない）
+          onTap: () async {
+            // 🗑️表示中はまず閉じる（誤タップで拡大/追加が走らないように）
             if (_goshuinTrashSlot != null) {
               _hideGoshuinTrash();
               return;
             }
-            _openGoshuinViewer(slot);
+
+            // 元の操作感：
+            // - 画像あり：拡大表示
+            // - 画像なし：ライブラリ/カメラ選択
+            if (has) {
+              _openGoshuinViewer(slot);
+            } else {
+              await _chooseGoshuinSource(slot);
+            }
           },
           child: Stack(
             children: [
@@ -422,8 +460,8 @@ class _BookPageState extends State<BookPage> {
                         child: Image.memory(bytes, fit: BoxFit.cover),
                       )
                     : const Center(
-                        child:
-                            Icon(Icons.image_outlined, color: Colors.black38),
+                        child: Icon(Icons.add_photo_alternate_outlined,
+                            color: Colors.black38),
                       ),
               ),
 
@@ -459,28 +497,6 @@ class _BookPageState extends State<BookPage> {
                 ),
             ],
           ),
-        ),
-        const SizedBox(height: 6),
-
-        // ★アイコン多すぎ問題対策：削除アイコンは出さない（長押し削除に統一）
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            IconButton(
-              tooltip: '選ぶ',
-              icon: const Icon(Icons.photo_library_outlined, size: 20),
-              onPressed: _goshuinTrashSlot != null
-                  ? null
-                  : () => _setGoshuinFromGallery(slot),
-            ),
-            IconButton(
-              tooltip: '撮る',
-              icon: const Icon(Icons.photo_camera_outlined, size: 20),
-              onPressed: _goshuinTrashSlot != null
-                  ? null
-                  : () => _setGoshuinFromCamera(slot),
-            ),
-          ],
         ),
       ],
     );
@@ -614,247 +630,261 @@ class _BookPageState extends State<BookPage> {
       ),
       body: Stack(
         children: [
-          SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // 寺院プロフィール
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      children: [
-                        TextField(
-                          controller: _visitDateController,
-                          readOnly: true,
-                          onTap: _pickDate,
-                          decoration: const InputDecoration(
-                            labelText: '参拝日',
-                            suffixIcon: Icon(Icons.calendar_today),
-                            contentPadding: EdgeInsets.fromLTRB(12, 16, 48, 16),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        TextField(
-                          controller: _templeNameController,
-                          onChanged: (_) => _saveNow(),
-                          decoration: const InputDecoration(labelText: '寺院名'),
-                        ),
-                        const SizedBox(height: 12),
-                        TextField(
-                          controller: _addressController,
-                          onChanged: (_) => _saveNow(),
-                          decoration: InputDecoration(
-                            labelText: '所在地',
-                            suffixIcon: IconButton(
-                              icon: const Icon(Icons.location_on),
-                              onPressed: _openInMaps,
+          // スクロールしたら🗑️を閉じる（誤操作防止）
+          NotificationListener<ScrollNotification>(
+            onNotification: (n) {
+              if (_goshuinTrashSlot != null &&
+                  (n is ScrollStartNotification ||
+                      n is UserScrollNotification ||
+                      n is ScrollUpdateNotification)) {
+                _hideGoshuinTrash();
+              }
+              return false;
+            },
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 寺院プロフィール
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        children: [
+                          TextField(
+                            controller: _visitDateController,
+                            readOnly: true,
+                            onTap: _pickDate,
+                            decoration: const InputDecoration(
+                              labelText: '参拝日',
+                              suffixIcon: Icon(Icons.calendar_today),
+                              contentPadding:
+                                  EdgeInsets.fromLTRB(12, 16, 48, 16),
                             ),
-                            contentPadding:
-                                const EdgeInsets.fromLTRB(12, 16, 48, 16),
                           ),
-                        ),
-                        const SizedBox(height: 12),
-                        TextField(
-                          controller: _sectController,
-                          onChanged: (_) => _saveNow(),
-                          decoration: const InputDecoration(labelText: '宗派'),
-                        ),
-                        const SizedBox(height: 12),
-                        TextField(
-                          controller: _honzonController,
-                          onChanged: (_) => _saveNow(),
-                          decoration: const InputDecoration(labelText: '御本尊'),
-                        ),
-                      ],
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: _templeNameController,
+                            onChanged: (_) => _saveNow(),
+                            decoration: const InputDecoration(labelText: '寺院名'),
+                          ),
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: _addressController,
+                            onChanged: (_) => _saveNow(),
+                            decoration: InputDecoration(
+                              labelText: '所在地',
+                              suffixIcon: IconButton(
+                                icon: const Icon(Icons.location_on),
+                                onPressed: _openInMaps,
+                              ),
+                              contentPadding:
+                                  const EdgeInsets.fromLTRB(12, 16, 48, 16),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: _sectController,
+                            onChanged: (_) => _saveNow(),
+                            decoration: const InputDecoration(labelText: '宗派'),
+                          ),
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: _honzonController,
+                            onChanged: (_) => _saveNow(),
+                            decoration: const InputDecoration(labelText: '御本尊'),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
 
-                const SizedBox(height: 24),
+                  const SizedBox(height: 24),
 
-                // 御朱印（2枠：常に表示＆センターバランス）
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            const Expanded(
-                              child: Text(
-                                '御朱印（最大2つ）',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
+                  // 御朱印（2枠：常に表示＆センターバランス）
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: const [
+                              Expanded(
+                                child: Text(
+                                  '御朱印（最大2つ）',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
                               ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              Expanded(
+                                  child: _goshuinSlot(slot: 0, label: '御朱印①')),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                  child: _goshuinSlot(slot: 1, label: '御朱印②')),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          const Text(
+                            'タップ：追加/拡大　長押し：🗑️表示',
+                            style:
+                                TextStyle(color: Colors.black54, fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 24),
+
+                  // メモ
+                  TextField(
+                    controller: _memoController,
+                    maxLines: 4,
+                    onChanged: (_) => _saveNow(),
+                    decoration: const InputDecoration(labelText: '参拝メモ'),
+                  ),
+
+                  const SizedBox(height: 24),
+
+                  // アルバム（削除は追加の隣）
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          const Text(
+                            'アルバム',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
                             ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        Row(
-                          children: [
-                            Expanded(
-                                child: _goshuinSlot(slot: 0, label: '御朱印①')),
+                          ),
+                          if (_albumSelectionMode) ...[
                             const SizedBox(width: 10),
-                            Expanded(
-                                child: _goshuinSlot(slot: 1, label: '御朱印②')),
-                          ],
-                        ),
-                        const SizedBox(height: 6),
-                        const Text(
-                          'タップで拡大表示（削除は長押しで🗑️表示）',
-                          style: TextStyle(color: Colors.black54, fontSize: 12),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 24),
-
-                // メモ
-                TextField(
-                  controller: _memoController,
-                  maxLines: 4,
-                  onChanged: (_) => _saveNow(),
-                  decoration: const InputDecoration(labelText: '参拝メモ'),
-                ),
-
-                const SizedBox(height: 24),
-
-                // アルバム（削除は追加の隣）
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        const Text(
-                          'アルバム',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        if (_albumSelectionMode) ...[
-                          const SizedBox(width: 10),
-                          Text(
-                            '${_albumSelectedIndexes.length}枚選択',
-                            style: const TextStyle(color: Colors.black54),
-                          ),
-                        ],
-                      ],
-                    ),
-                    Row(
-                      children: [
-                        if (_albumSelectionMode) ...[
-                          IconButton(
-                            tooltip: '選択解除',
-                            icon: const Icon(Icons.close),
-                            onPressed: _exitAlbumSelectionMode,
-                          ),
-                          IconButton(
-                            tooltip: '削除',
-                            icon: const Icon(Icons.delete),
-                            onPressed: _albumSelectedIndexes.isEmpty
-                                ? null
-                                : _deleteSelectedAlbumImages,
-                          ),
-                          const SizedBox(width: 6),
-                        ],
-                        ElevatedButton.icon(
-                          onPressed: _albumSelectionMode ? null : _pickImages,
-                          icon: const Icon(Icons.photo),
-                          label: const Text('追加'),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-
-                if (_albumImages.isEmpty)
-                  const Text('まだ写真がありません。右の「追加」から入れられます。')
-                else
-                  GridView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: _albumImages.length,
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 3,
-                      crossAxisSpacing: 8,
-                      mainAxisSpacing: 8,
-                    ),
-                    itemBuilder: (_, i) {
-                      final selected = _albumSelectedIndexes.contains(i);
-
-                      return GestureDetector(
-                        onLongPress: () => _enterAlbumSelectionMode(i),
-                        onTap: () {
-                          if (_albumSelectionMode) {
-                            _toggleAlbumSelect(i);
-                          } else {
-                            _openViewer(i);
-                          }
-                        },
-                        child: Stack(
-                          children: [
-                            Container(
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(12),
-                                border:
-                                    Border.all(color: const Color(0xFFD0B48A)),
-                              ),
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(11),
-                                child: Image.memory(
-                                  _albumImages[i],
-                                  fit: BoxFit.cover,
-                                  width: double.infinity,
-                                  height: double.infinity,
-                                ),
-                              ),
+                            Text(
+                              '${_albumSelectedIndexes.length}枚選択',
+                              style: const TextStyle(color: Colors.black54),
                             ),
-                            if (_albumSelectionMode)
-                              Positioned.fill(
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: selected
-                                        ? Colors.blue.withOpacity(0.35)
-                                        : Colors.blue.withOpacity(0.10),
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                ),
-                              ),
-                            if (selected)
-                              Positioned(
-                                right: 6,
-                                top: 6,
-                                child: Container(
-                                  padding: const EdgeInsets.all(4),
-                                  decoration: BoxDecoration(
-                                    color: Colors.blue.withOpacity(0.9),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: const Icon(
-                                    Icons.check,
-                                    size: 16,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ),
                           ],
-                        ),
-                      );
-                    },
+                        ],
+                      ),
+                      Row(
+                        children: [
+                          if (_albumSelectionMode) ...[
+                            IconButton(
+                              tooltip: '選択解除',
+                              icon: const Icon(Icons.close),
+                              onPressed: _exitAlbumSelectionMode,
+                            ),
+                            IconButton(
+                              tooltip: '削除',
+                              icon: const Icon(Icons.delete),
+                              onPressed: _albumSelectedIndexes.isEmpty
+                                  ? null
+                                  : _deleteSelectedAlbumImages,
+                            ),
+                            const SizedBox(width: 6),
+                          ],
+                          ElevatedButton.icon(
+                            onPressed: _albumSelectionMode ? null : _pickImages,
+                            icon: const Icon(Icons.photo),
+                            label: const Text('追加'),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
+                  const SizedBox(height: 12),
 
-                const SizedBox(height: 40),
-              ],
+                  if (_albumImages.isEmpty)
+                    const Text('まだ写真がありません。右の「追加」から入れられます。')
+                  else
+                    GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: _albumImages.length,
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 3,
+                        crossAxisSpacing: 8,
+                        mainAxisSpacing: 8,
+                      ),
+                      itemBuilder: (_, i) {
+                        final selected = _albumSelectedIndexes.contains(i);
+
+                        return GestureDetector(
+                          onLongPress: () => _enterAlbumSelectionMode(i),
+                          onTap: () {
+                            if (_albumSelectionMode) {
+                              _toggleAlbumSelect(i);
+                            } else {
+                              _openViewer(i);
+                            }
+                          },
+                          child: Stack(
+                            children: [
+                              Container(
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                      color: const Color(0xFFD0B48A)),
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(11),
+                                  child: Image.memory(
+                                    _albumImages[i],
+                                    fit: BoxFit.cover,
+                                    width: double.infinity,
+                                    height: double.infinity,
+                                  ),
+                                ),
+                              ),
+                              if (_albumSelectionMode)
+                                Positioned.fill(
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: selected
+                                          ? Colors.blue.withOpacity(0.35)
+                                          : Colors.blue.withOpacity(0.10),
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                  ),
+                                ),
+                              if (selected)
+                                Positioned(
+                                  right: 6,
+                                  top: 6,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(4),
+                                    decoration: BoxDecoration(
+                                      color: Colors.blue.withOpacity(0.9),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(
+                                      Icons.check,
+                                      size: 16,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+
+                  const SizedBox(height: 40),
+                ],
+              ),
             ),
           ),
 
@@ -881,15 +911,6 @@ class _BookPageState extends State<BookPage> {
               onTap: _canGoNext ? _goNext : null,
             ),
           ),
-
-          // 🗑️表示中：どこかをタップしたら閉じる（エッジ操作も無効化）
-          if (_goshuinTrashSlot != null)
-            Positioned.fill(
-              child: GestureDetector(
-                behavior: HitTestBehavior.translucent,
-                onTap: _hideGoshuinTrash,
-              ),
-            ),
         ],
       ),
     );
