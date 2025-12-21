@@ -20,6 +20,9 @@ class _TempleListPageState extends State<TempleListPage> {
   List<TempleEntry> _entries = [];
   TempleSortMode _sortMode = TempleSortMode.visitDateDesc;
 
+  bool _selectionMode = false;
+  final Set<String> _selectedIds = <String>{};
+
   @override
   void initState() {
     super.initState();
@@ -75,6 +78,17 @@ class _TempleListPageState extends State<TempleListPage> {
     setState(() => _entries = all);
   }
 
+  String _sortLabel(TempleSortMode m) {
+    switch (m) {
+      case TempleSortMode.visitDateDesc:
+        return '参拝日：新しい順';
+      case TempleSortMode.visitDateAsc:
+        return '参拝日：古い順';
+      case TempleSortMode.nameAsc:
+        return '寺院名：A→Z';
+    }
+  }
+
   Future<void> _pushSlide(Widget page) async {
     await Navigator.of(context).push(
       PageRouteBuilder(
@@ -110,11 +124,7 @@ class _TempleListPageState extends State<TempleListPage> {
     final idx = ids.indexOf(entry.id);
 
     await _pushSlide(
-      BookPage(
-        templeId: entry.id,
-        templeIds: ids,
-        currentIndex: idx,
-      ),
+      BookPage(templeId: entry.id, templeIds: ids, currentIndex: idx),
     );
 
     await _reload();
@@ -125,21 +135,48 @@ class _TempleListPageState extends State<TempleListPage> {
     final idx = ids.indexOf(id);
 
     await _pushSlide(
-      BookPage(
-        templeId: id,
-        templeIds: ids,
-        currentIndex: idx,
-      ),
+      BookPage(templeId: id, templeIds: ids, currentIndex: idx),
     );
+
     await _reload();
   }
 
-  Future<void> _delete(String id, String templeName) async {
+  // ---------- 選択モード ----------
+  void _enterSelection(String id) {
+    setState(() {
+      _selectionMode = true;
+      _selectedIds.add(id);
+    });
+  }
+
+  void _toggleSelection(String id) {
+    setState(() {
+      if (_selectedIds.contains(id)) {
+        _selectedIds.remove(id);
+      } else {
+        _selectedIds.add(id);
+      }
+      if (_selectedIds.isEmpty) {
+        _selectionMode = false;
+      }
+    });
+  }
+
+  void _exitSelection() {
+    setState(() {
+      _selectionMode = false;
+      _selectedIds.clear();
+    });
+  }
+
+  Future<void> _deleteSelected() async {
+    if (_selectedIds.isEmpty) return;
+
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('削除しますか？'),
-        content: Text('「$templeName」のページを削除します。'),
+        content: Text('${_selectedIds.length}件の寺院ページを削除します。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -153,21 +190,14 @@ class _TempleListPageState extends State<TempleListPage> {
       ),
     );
 
-    if (ok == true) {
-      await TempleStore.deleteById(id);
-      await _reload();
-    }
-  }
+    if (ok != true) return;
 
-  String _sortLabel(TempleSortMode m) {
-    switch (m) {
-      case TempleSortMode.visitDateDesc:
-        return '参拝日：新しい順';
-      case TempleSortMode.visitDateAsc:
-        return '参拝日：古い順';
-      case TempleSortMode.nameAsc:
-        return '寺院名：A→Z';
+    for (final id in _selectedIds) {
+      await TempleStore.deleteById(id);
     }
+
+    _exitSelection();
+    await _reload();
   }
 
   Widget _goshuinLeading(TempleEntry e) {
@@ -176,7 +206,7 @@ class _TempleListPageState extends State<TempleListPage> {
     return Container(
       width: 50,
       height: 66,
-      padding: const EdgeInsets.all(3), // ★少し余白
+      padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: const Color(0xFFD0B48A)),
@@ -188,7 +218,7 @@ class _TempleListPageState extends State<TempleListPage> {
               borderRadius: BorderRadius.circular(7),
               child: Image.memory(
                 bytes,
-                fit: BoxFit.contain, // ★上下が切れない
+                fit: BoxFit.contain,
                 alignment: Alignment.center,
               ),
             ),
@@ -197,38 +227,55 @@ class _TempleListPageState extends State<TempleListPage> {
 
   @override
   Widget build(BuildContext context) {
+    final title = _selectionMode
+        ? '${_selectedIds.length}件選択'
+        : '寺院一覧（${_sortLabel(_sortMode)}）';
+
     return Scaffold(
       appBar: AppBar(
-        title: Text('寺院一覧（${_sortLabel(_sortMode)}）'),
+        title: Text(title),
         automaticallyImplyLeading: false,
-        actions: [
-          PopupMenuButton<TempleSortMode>(
-            tooltip: '並び替え',
-            icon: const Icon(Icons.sort),
-            initialValue: _sortMode,
-            onSelected: (m) async {
-              setState(() => _sortMode = m);
-              await _reload();
-            },
-            itemBuilder: (context) => const [
-              PopupMenuItem(
-                value: TempleSortMode.visitDateDesc,
-                child: Text('参拝日：新しい順'),
-              ),
-              PopupMenuItem(
-                value: TempleSortMode.visitDateAsc,
-                child: Text('参拝日：古い順'),
-              ),
-              PopupMenuItem(
-                value: TempleSortMode.nameAsc,
-                child: Text('寺院名：A→Z'),
-              ),
-            ],
-          ),
-        ],
+        actions: _selectionMode
+            ? [
+                IconButton(
+                  tooltip: '選択解除',
+                  icon: const Icon(Icons.close),
+                  onPressed: _exitSelection,
+                ),
+                IconButton(
+                  tooltip: '削除',
+                  icon: const Icon(Icons.delete),
+                  onPressed: _selectedIds.isEmpty ? null : _deleteSelected,
+                ),
+              ]
+            : [
+                PopupMenuButton<TempleSortMode>(
+                  tooltip: '並び替え',
+                  icon: const Icon(Icons.sort),
+                  initialValue: _sortMode,
+                  onSelected: (m) async {
+                    setState(() => _sortMode = m);
+                    await _reload();
+                  },
+                  itemBuilder: (context) => const [
+                    PopupMenuItem(
+                      value: TempleSortMode.visitDateDesc,
+                      child: Text('参拝日：新しい順'),
+                    ),
+                    PopupMenuItem(
+                      value: TempleSortMode.visitDateAsc,
+                      child: Text('参拝日：古い順'),
+                    ),
+                    PopupMenuItem(
+                      value: TempleSortMode.nameAsc,
+                      child: Text('寺院名：A→Z'),
+                    ),
+                  ],
+                ),
+              ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _addNew,
+        onPressed: _selectionMode ? null : _addNew,
         icon: const Icon(Icons.add),
         label: const Text('寺院を追加'),
       ),
@@ -242,24 +289,63 @@ class _TempleListPageState extends State<TempleListPage> {
               separatorBuilder: (_, __) => const SizedBox(height: 10),
               itemBuilder: (context, index) {
                 final e = _entries[index];
+                final selected = _selectedIds.contains(e.id);
+
                 final title = e.templeName.isEmpty ? '（寺院名未入力）' : e.templeName;
                 final sub = e.visitDateText.isEmpty
                     ? '参拝日：未入力'
                     : '参拝日：${e.visitDateText}';
 
-                return Card(
-                  child: ListTile(
-                    leading: _goshuinLeading(e),
-                    title: Text(
-                      title,
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    subtitle: Text(sub),
-                    onTap: () => _open(e.id),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.delete_outline),
-                      onPressed: () => _delete(e.id, title),
-                    ),
+                return GestureDetector(
+                  onLongPress: () => _enterSelection(e.id),
+                  onTap: () {
+                    if (_selectionMode) {
+                      _toggleSelection(e.id);
+                    } else {
+                      _open(e.id);
+                    }
+                  },
+                  child: Stack(
+                    children: [
+                      Card(
+                        child: ListTile(
+                          leading: _goshuinLeading(e),
+                          title: Text(
+                            title,
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          subtitle: Text(sub),
+                        ),
+                      ),
+                      if (_selectionMode)
+                        Positioned.fill(
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: selected
+                                  ? Colors.blue.withOpacity(0.18)
+                                  : Colors.transparent,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        ),
+                      if (selected)
+                        Positioned(
+                          right: 14,
+                          top: 12,
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.withOpacity(0.9),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.check,
+                              size: 16,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                 );
               },
