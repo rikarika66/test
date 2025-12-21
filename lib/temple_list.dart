@@ -420,7 +420,7 @@ class _TempleListPageState extends State<TempleListPage> {
                   crossAxisSpacing: 10,
                   mainAxisSpacing: 10,
                   // 御朱印っぽい縦長サムネ（帯が2行になったので少しだけ縦を稼ぐ）
-                  childAspectRatio: 0.68,
+                  childAspectRatio: 0.70,
                 ),
                 itemBuilder: (context, index) => _gridTile(_entries[index]),
               ),
