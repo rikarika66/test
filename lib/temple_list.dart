@@ -253,7 +253,7 @@ class _TempleListPageState extends State<TempleListPage> {
             ),
           ),
 
-          // 下帯：C（ぼかし） + B（文字影）
+          // 下帯：C（ぼかし） + B（文字影） + 寺院名は2行
           Positioned(
             left: 0,
             right: 0,
@@ -267,7 +267,6 @@ class _TempleListPageState extends State<TempleListPage> {
                 child: Container(
                   padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
                   decoration: BoxDecoration(
-                    // ぼかしの上に半透明の色を重ねて可読性を確保
                     color: Colors.black.withOpacity(0.35),
                     border: Border(
                       top: BorderSide(
@@ -282,17 +281,17 @@ class _TempleListPageState extends State<TempleListPage> {
                     children: [
                       Text(
                         title,
-                        maxLines: 1,
+                        maxLines: 2, // ★寺院名を2行まで
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.bold,
                           fontSize: 13,
-                          height: 1.1,
+                          height: 1.10,
                           shadows: _textShadows,
                         ),
                       ),
-                      const SizedBox(height: 2),
+                      const SizedBox(height: 3),
                       Text(
                         date,
                         maxLines: 1,
@@ -300,7 +299,7 @@ class _TempleListPageState extends State<TempleListPage> {
                         style: TextStyle(
                           color: Colors.white.withOpacity(0.85),
                           fontSize: 11,
-                          height: 1.1,
+                          height: 1.10,
                           shadows: _textShadows,
                         ),
                       ),
@@ -420,8 +419,8 @@ class _TempleListPageState extends State<TempleListPage> {
                   crossAxisCount: crossAxisCount,
                   crossAxisSpacing: 10,
                   mainAxisSpacing: 10,
-                  // 御朱印っぽい縦長サムネ（好みに応じて 0.70〜0.85 で調整OK）
-                  childAspectRatio: 0.72,
+                  // 御朱印っぽい縦長サムネ（帯が2行になったので少しだけ縦を稼ぐ）
+                  childAspectRatio: 0.68,
                 ),
                 itemBuilder: (context, index) => _gridTile(_entries[index]),
               ),
