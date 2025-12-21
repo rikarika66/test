@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
 import 'temple_store.dart';
@@ -20,8 +22,8 @@ class _TempleListPageState extends State<TempleListPage> {
   List<TempleEntry> _entries = [];
   TempleSortMode _sortMode = TempleSortMode.visitDateDesc;
 
-  bool _selectionMode = false;
-  final Set<String> _selectedIds = <String>{};
+  // 長押しで🗑️を出す（表示中タイルID）
+  String? _trashTempleId;
 
   @override
   void initState() {
@@ -78,17 +80,6 @@ class _TempleListPageState extends State<TempleListPage> {
     setState(() => _entries = all);
   }
 
-  String _sortLabel(TempleSortMode m) {
-    switch (m) {
-      case TempleSortMode.visitDateDesc:
-        return '参拝日：新しい順';
-      case TempleSortMode.visitDateAsc:
-        return '参拝日：古い順';
-      case TempleSortMode.nameAsc:
-        return '寺院名：A→Z';
-    }
-  }
-
   Future<void> _pushSlide(Widget page) async {
     await Navigator.of(context).push(
       PageRouteBuilder(
@@ -124,7 +115,11 @@ class _TempleListPageState extends State<TempleListPage> {
     final idx = ids.indexOf(entry.id);
 
     await _pushSlide(
-      BookPage(templeId: entry.id, templeIds: ids, currentIndex: idx),
+      BookPage(
+        templeId: entry.id,
+        templeIds: ids,
+        currentIndex: idx,
+      ),
     );
 
     await _reload();
@@ -135,48 +130,30 @@ class _TempleListPageState extends State<TempleListPage> {
     final idx = ids.indexOf(id);
 
     await _pushSlide(
-      BookPage(templeId: id, templeIds: ids, currentIndex: idx),
+      BookPage(
+        templeId: id,
+        templeIds: ids,
+        currentIndex: idx,
+      ),
     );
-
     await _reload();
   }
 
-  // ---------- 選択モード ----------
-  void _enterSelection(String id) {
-    setState(() {
-      _selectionMode = true;
-      _selectedIds.add(id);
-    });
+  void _showTrash(String id) {
+    setState(() => _trashTempleId = id);
   }
 
-  void _toggleSelection(String id) {
-    setState(() {
-      if (_selectedIds.contains(id)) {
-        _selectedIds.remove(id);
-      } else {
-        _selectedIds.add(id);
-      }
-      if (_selectedIds.isEmpty) {
-        _selectionMode = false;
-      }
-    });
+  void _hideTrash() {
+    if (_trashTempleId == null) return;
+    setState(() => _trashTempleId = null);
   }
 
-  void _exitSelection() {
-    setState(() {
-      _selectionMode = false;
-      _selectedIds.clear();
-    });
-  }
-
-  Future<void> _deleteSelected() async {
-    if (_selectedIds.isEmpty) return;
-
+  Future<void> _delete(String id, String templeName) async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('削除しますか？'),
-        content: Text('${_selectedIds.length}件の寺院ページを削除します。'),
+        content: Text('「$templeName」のページを削除します。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -190,92 +167,204 @@ class _TempleListPageState extends State<TempleListPage> {
       ),
     );
 
-    if (ok != true) return;
-
-    for (final id in _selectedIds) {
+    if (ok == true) {
       await TempleStore.deleteById(id);
+      _hideTrash();
+      await _reload();
     }
-
-    _exitSelection();
-    await _reload();
   }
 
-  Widget _goshuinLeading(TempleEntry e) {
-    final bytes = e.goshuinImages.isNotEmpty ? e.goshuinImages.first : null;
+  String _sortLabel(TempleSortMode m) {
+    switch (m) {
+      case TempleSortMode.visitDateDesc:
+        return '参拝日：新しい順';
+      case TempleSortMode.visitDateAsc:
+        return '参拝日：古い順';
+      case TempleSortMode.nameAsc:
+        return '寺院名：A→Z';
+    }
+  }
 
-    return Container(
-      width: 50,
-      height: 66,
-      padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFD0B48A)),
-        color: Colors.white,
-      ),
-      child: bytes == null
-          ? const Icon(Icons.image_outlined, color: Colors.black38)
-          : ClipRRect(
-              borderRadius: BorderRadius.circular(7),
-              child: Image.memory(
-                bytes,
-                fit: BoxFit.contain,
-                alignment: Alignment.center,
+  /// 御朱印サムネ：①があれば①、なければ②、どちらも空ならnull
+  Uint8List? _pickGoshuinThumbBytes(TempleEntry e) {
+    for (final b in e.goshuinImages) {
+      if (b.isNotEmpty) return b;
+    }
+    return null;
+  }
+
+  Widget _gridTile(TempleEntry e) {
+    final title = e.templeName.isEmpty ? '（寺院名未入力）' : e.templeName;
+    final date = e.visitDateText.isEmpty ? '参拝日：未入力' : e.visitDateText;
+    final bytes = _pickGoshuinThumbBytes(e);
+    final showTrash = _trashTempleId == e.id;
+
+    return GestureDetector(
+      onLongPress: () => _showTrash(e.id),
+      onTap: () {
+        // 🗑️表示中は、まず閉じる（誤タップ防止）
+        if (_trashTempleId != null) {
+          _hideTrash();
+          return;
+        }
+        _open(e.id);
+      },
+      child: Stack(
+        children: [
+          // 枠
+          Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFD0B48A)),
+              color: Colors.white,
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(11),
+              child: bytes == null
+                  ? Container(
+                      color: Colors.white,
+                      child: const Center(
+                        child: Icon(Icons.image_outlined,
+                            color: Colors.black38, size: 28),
+                      ),
+                    )
+                  : Container(
+                      // 御朱印は縦長が多いので "contain" で切れない表示
+                      padding: const EdgeInsets.all(6),
+                      color: Colors.white,
+                      child: Image.memory(
+                        bytes,
+                        fit: BoxFit.contain,
+                        alignment: Alignment.center,
+                        width: double.infinity,
+                        height: double.infinity,
+                      ),
+                    ),
+            ),
+          ),
+
+          // 下帯：寺院名 & 参拝日（サムネ内に表示）
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+              decoration: BoxDecoration(
+                borderRadius: const BorderRadius.vertical(
+                  bottom: Radius.circular(12),
+                ),
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.black.withOpacity(0.00),
+                    Colors.black.withOpacity(0.55),
+                  ],
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                      height: 1.1,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    date,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 11,
+                      height: 1.1,
+                    ),
+                  ),
+                ],
               ),
             ),
+          ),
+
+          // 🗑️表示中の薄暗さ
+          if (showTrash)
+            Positioned.fill(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+
+          // 🗑️（タイル右上）
+          if (showTrash)
+            Positioned(
+              right: 6,
+              top: 6,
+              child: Material(
+                color: Colors.red.withOpacity(0.95),
+                shape: const CircleBorder(),
+                child: InkWell(
+                  customBorder: const CircleBorder(),
+                  onTap: () => _delete(e.id, title),
+                  child: const Padding(
+                    padding: EdgeInsets.all(7),
+                    child: Icon(Icons.delete, size: 18, color: Colors.white),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final title = _selectionMode
-        ? '${_selectedIds.length}件選択'
-        : '寺院一覧（${_sortLabel(_sortMode)}）';
+    // 3列を基準（画面が狭い端末でも見やすく）
+    const crossAxisCount = 3;
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(title),
+        title: Text('寺院一覧（${_sortLabel(_sortMode)}）'),
         automaticallyImplyLeading: false,
-        actions: _selectionMode
-            ? [
-                IconButton(
-                  tooltip: '選択解除',
-                  icon: const Icon(Icons.close),
-                  onPressed: _exitSelection,
-                ),
-                IconButton(
-                  tooltip: '削除',
-                  icon: const Icon(Icons.delete),
-                  onPressed: _selectedIds.isEmpty ? null : _deleteSelected,
-                ),
-              ]
-            : [
-                PopupMenuButton<TempleSortMode>(
-                  tooltip: '並び替え',
-                  icon: const Icon(Icons.sort),
-                  initialValue: _sortMode,
-                  onSelected: (m) async {
-                    setState(() => _sortMode = m);
-                    await _reload();
-                  },
-                  itemBuilder: (context) => const [
-                    PopupMenuItem(
-                      value: TempleSortMode.visitDateDesc,
-                      child: Text('参拝日：新しい順'),
-                    ),
-                    PopupMenuItem(
-                      value: TempleSortMode.visitDateAsc,
-                      child: Text('参拝日：古い順'),
-                    ),
-                    PopupMenuItem(
-                      value: TempleSortMode.nameAsc,
-                      child: Text('寺院名：A→Z'),
-                    ),
-                  ],
-                ),
-              ],
+        actions: [
+          PopupMenuButton<TempleSortMode>(
+            tooltip: '並び替え',
+            icon: const Icon(Icons.sort),
+            initialValue: _sortMode,
+            onSelected: (m) async {
+              setState(() => _sortMode = m);
+              await _reload();
+            },
+            itemBuilder: (context) => const [
+              PopupMenuItem(
+                value: TempleSortMode.visitDateDesc,
+                child: Text('参拝日：新しい順'),
+              ),
+              PopupMenuItem(
+                value: TempleSortMode.visitDateAsc,
+                child: Text('参拝日：古い順'),
+              ),
+              PopupMenuItem(
+                value: TempleSortMode.nameAsc,
+                child: Text('寺院名：A→Z'),
+              ),
+            ],
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _selectionMode ? null : _addNew,
+        onPressed: _addNew,
         icon: const Icon(Icons.add),
         label: const Text('寺院を追加'),
       ),
@@ -283,72 +372,29 @@ class _TempleListPageState extends State<TempleListPage> {
           ? const Center(
               child: Text('まだ寺院ページがありません。\n右下の「寺院を追加」から作成できます。'),
             )
-          : ListView.separated(
-              padding: const EdgeInsets.all(12),
-              itemCount: _entries.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 10),
-              itemBuilder: (context, index) {
-                final e = _entries[index];
-                final selected = _selectedIds.contains(e.id);
-
-                final title = e.templeName.isEmpty ? '（寺院名未入力）' : e.templeName;
-                final sub = e.visitDateText.isEmpty
-                    ? '参拝日：未入力'
-                    : '参拝日：${e.visitDateText}';
-
-                return GestureDetector(
-                  onLongPress: () => _enterSelection(e.id),
-                  onTap: () {
-                    if (_selectionMode) {
-                      _toggleSelection(e.id);
-                    } else {
-                      _open(e.id);
-                    }
-                  },
-                  child: Stack(
-                    children: [
-                      Card(
-                        child: ListTile(
-                          leading: _goshuinLeading(e),
-                          title: Text(
-                            title,
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          subtitle: Text(sub),
-                        ),
-                      ),
-                      if (_selectionMode)
-                        Positioned.fill(
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: selected
-                                  ? Colors.blue.withOpacity(0.18)
-                                  : Colors.transparent,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                        ),
-                      if (selected)
-                        Positioned(
-                          right: 14,
-                          top: 12,
-                          child: Container(
-                            padding: const EdgeInsets.all(4),
-                            decoration: BoxDecoration(
-                              color: Colors.blue.withOpacity(0.9),
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(
-                              Icons.check,
-                              size: 16,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                );
+          : NotificationListener<ScrollNotification>(
+              onNotification: (n) {
+                // スクロール開始で🗑️を閉じる（誤操作防止）
+                if (_trashTempleId != null &&
+                    (n is ScrollStartNotification ||
+                        n is UserScrollNotification ||
+                        n is ScrollUpdateNotification)) {
+                  _hideTrash();
+                }
+                return false;
               },
+              child: GridView.builder(
+                padding: const EdgeInsets.all(12),
+                itemCount: _entries.length,
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: crossAxisCount,
+                  crossAxisSpacing: 10,
+                  mainAxisSpacing: 10,
+                  // 御朱印っぽい縦長サムネ（好みに応じて 0.70〜0.85 で調整OK）
+                  childAspectRatio: 0.72,
+                ),
+                itemBuilder: (context, index) => _gridTile(_entries[index]),
+              ),
             ),
     );
   }
