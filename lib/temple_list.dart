@@ -261,7 +261,7 @@ class _TempleListPageState extends State<TempleListPage> {
               child: BackdropFilter(
                 filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                 child: Container(
-                  padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+                  padding: const EdgeInsets.fromLTRB(8, 5, 8, 6),
                   decoration: BoxDecoration(
                     color: _bandBaseColor.withOpacity(0.18), // ← 濃紺ここ
                     border: Border(
