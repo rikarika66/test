@@ -267,7 +267,7 @@ class _TempleListPageState extends State<TempleListPage> {
                 child: Container(
                   padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
                   decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.35),
+                    color: Colors.black.withOpacity(0.25),
                     border: Border(
                       top: BorderSide(
                         color: Colors.white.withOpacity(0.18),
