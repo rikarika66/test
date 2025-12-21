@@ -337,25 +337,34 @@ class _BookPageState extends State<BookPage> {
     );
   }
 
-  /// 画像が空のとき：タップで「写真ライブラリ / カメラ」を選ばせる（元の操作感に戻す）
+  /// ★修正版：ボトムシートのリップル（黒い円）を抑止
   Future<void> _chooseGoshuinSource(int slot) async {
     final result = await showModalBottomSheet<String>(
       context: context,
-      builder: (_) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.photo_library_outlined),
-              title: const Text('写真ライブラリ'),
-              onTap: () => Navigator.pop(context, 'gallery'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo_camera_outlined),
-              title: const Text('カメラ'),
-              onTap: () => Navigator.pop(context, 'camera'),
-            ),
-          ],
+      builder: (_) => Theme(
+        data: Theme.of(context).copyWith(
+          splashFactory: NoSplash.splashFactory,
+          splashColor: Colors.transparent,
+          highlightColor: Colors.transparent,
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.photo_library_outlined),
+                title: const Text('写真ライブラリ'),
+                enableFeedback: false,
+                onTap: () => Navigator.pop(context, 'gallery'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_camera_outlined),
+                title: const Text('カメラ'),
+                enableFeedback: false,
+                onTap: () => Navigator.pop(context, 'camera'),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -430,7 +439,7 @@ class _BookPageState extends State<BookPage> {
         GestureDetector(
           onLongPress: has ? () => _showGoshuinTrash(slot) : null,
           onTap: () async {
-            // 🗑️表示中はまず閉じる（誤タップで拡大/追加が走らないように）
+            // 🗑️表示中はまず閉じる
             if (_goshuinTrashSlot != null) {
               _hideGoshuinTrash();
               return;
@@ -464,8 +473,6 @@ class _BookPageState extends State<BookPage> {
                             color: Colors.black38),
                       ),
               ),
-
-              // 🗑️が出ているときだけ、うっすら暗くする
               if (showTrash)
                 Positioned.fill(
                   child: Container(
@@ -475,8 +482,6 @@ class _BookPageState extends State<BookPage> {
                     ),
                   ),
                 ),
-
-              // 🗑️（カード内右上）
               if (showTrash)
                 Positioned(
                   right: 6,
@@ -702,25 +707,19 @@ class _BookPageState extends State<BookPage> {
 
                   const SizedBox(height: 24),
 
-                  // 御朱印（2枠：常に表示＆センターバランス）
+                  // 御朱印
                   Card(
                     child: Padding(
                       padding: const EdgeInsets.all(12),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(
-                            children: const [
-                              Expanded(
-                                child: Text(
-                                  '御朱印（最大2つ）',
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                            ],
+                          const Text(
+                            '御朱印（最大2つ）',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                           const SizedBox(height: 10),
                           Row(
@@ -755,7 +754,7 @@ class _BookPageState extends State<BookPage> {
 
                   const SizedBox(height: 24),
 
-                  // アルバム（削除は追加の隣）
+                  // アルバム
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
