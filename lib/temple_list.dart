@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'dart:ui'; // ImageFilter（ぼかし）用
 
 import 'package:flutter/material.dart';
 
@@ -193,6 +194,15 @@ class _TempleListPageState extends State<TempleListPage> {
     return null;
   }
 
+  // 文字影（B）
+  List<Shadow> get _textShadows => const [
+        Shadow(
+          blurRadius: 3,
+          offset: Offset(0, 1.5),
+          color: Colors.black87,
+        ),
+      ];
+
   Widget _gridTile(TempleEntry e) {
     final title = e.templeName.isEmpty ? '（寺院名未入力）' : e.templeName;
     final date = e.visitDateText.isEmpty ? '参拝日：未入力' : e.visitDateText;
@@ -243,53 +253,60 @@ class _TempleListPageState extends State<TempleListPage> {
             ),
           ),
 
-          // 下帯：寺院名 & 参拝日（サムネ内に表示）
+          // 下帯：C（ぼかし） + B（文字影）
           Positioned(
             left: 0,
             right: 0,
             bottom: 0,
-            child: Container(
-              padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
-              decoration: BoxDecoration(
-                borderRadius: const BorderRadius.vertical(
-                  bottom: Radius.circular(12),
-                ),
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.black.withOpacity(0.00),
-                    Colors.black.withOpacity(0.55),
-                  ],
-                ),
+            child: ClipRRect(
+              borderRadius: const BorderRadius.vertical(
+                bottom: Radius.circular(12),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
-                      height: 1.1,
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+                  decoration: BoxDecoration(
+                    // ぼかしの上に半透明の色を重ねて可読性を確保
+                    color: Colors.black.withOpacity(0.35),
+                    border: Border(
+                      top: BorderSide(
+                        color: Colors.white.withOpacity(0.18),
+                        width: 0.6,
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    date,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white70,
-                      fontSize: 11,
-                      height: 1.1,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                          height: 1.1,
+                          shadows: _textShadows,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        date,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.85),
+                          fontSize: 11,
+                          height: 1.1,
+                          shadows: _textShadows,
+                        ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
           ),
@@ -330,11 +347,24 @@ class _TempleListPageState extends State<TempleListPage> {
 
   @override
   Widget build(BuildContext context) {
-    // 3列を基準（画面が狭い端末でも見やすく）
+    // 3列を基準
     const crossAxisCount = 3;
 
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          tooltip: '表紙へ',
+          icon: const Icon(Icons.home),
+          onPressed: () {
+            // 表紙から push で来ていれば pop で戻れる
+            if (Navigator.of(context).canPop()) {
+              Navigator.of(context).pop();
+              return;
+            }
+            // もしこの画面がホーム扱いでも、'/'へ戻して表紙へ
+            Navigator.of(context).pushReplacementNamed('/');
+          },
+        ),
         title: Text('寺院一覧（${_sortLabel(_sortMode)}）'),
         automaticallyImplyLeading: false,
         actions: [
