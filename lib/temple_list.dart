@@ -26,6 +26,9 @@ class _TempleListPageState extends State<TempleListPage> {
   // 長押しで🗑️を出す（表示中タイルID）
   String? _trashTempleId;
 
+  // ★ 下帯（御朱印サムネ）のベース色：濃紺（藍）
+  static const Color _bandBaseColor = Color(0xFF1E2A38);
+
   @override
   void initState() {
     super.initState();
@@ -194,7 +197,7 @@ class _TempleListPageState extends State<TempleListPage> {
     return null;
   }
 
-  // 文字影（B）
+  // 文字影（読みやすさ用）
   List<Shadow> get _textShadows => const [
         Shadow(
           blurRadius: 3,
@@ -212,7 +215,6 @@ class _TempleListPageState extends State<TempleListPage> {
     return GestureDetector(
       onLongPress: () => _showTrash(e.id),
       onTap: () {
-        // 🗑️表示中は、まず閉じる（誤タップ防止）
         if (_trashTempleId != null) {
           _hideTrash();
           return;
@@ -221,7 +223,7 @@ class _TempleListPageState extends State<TempleListPage> {
       },
       child: Stack(
         children: [
-          // 枠
+          // サムネ本体
           Container(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
@@ -231,17 +233,12 @@ class _TempleListPageState extends State<TempleListPage> {
             child: ClipRRect(
               borderRadius: BorderRadius.circular(11),
               child: bytes == null
-                  ? Container(
-                      color: Colors.white,
-                      child: const Center(
-                        child: Icon(Icons.image_outlined,
-                            color: Colors.black38, size: 28),
-                      ),
+                  ? const Center(
+                      child: Icon(Icons.image_outlined,
+                          color: Colors.black38, size: 28),
                     )
-                  : Container(
-                      // 御朱印は縦長が多いので "contain" で切れない表示
+                  : Padding(
                       padding: const EdgeInsets.all(6),
-                      color: Colors.white,
                       child: Image.memory(
                         bytes,
                         fit: BoxFit.contain,
@@ -253,21 +250,20 @@ class _TempleListPageState extends State<TempleListPage> {
             ),
           ),
 
-          // 下帯：C（ぼかし） + B（文字影） + 寺院名は2行
+          // ★ 下帯：濃紺＋ぼかし＋文字影（寺院名2行）
           Positioned(
             left: 0,
             right: 0,
             bottom: 0,
             child: ClipRRect(
-              borderRadius: const BorderRadius.vertical(
-                bottom: Radius.circular(12),
-              ),
+              borderRadius:
+                  const BorderRadius.vertical(bottom: Radius.circular(12)),
               child: BackdropFilter(
                 filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                 child: Container(
                   padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
                   decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.25),
+                    color: _bandBaseColor.withOpacity(0.25), // ← 濃紺ここ
                     border: Border(
                       top: BorderSide(
                         color: Colors.white.withOpacity(0.18),
@@ -281,13 +277,13 @@ class _TempleListPageState extends State<TempleListPage> {
                     children: [
                       Text(
                         title,
-                        maxLines: 2, // ★寺院名を2行まで
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.bold,
                           fontSize: 13,
-                          height: 1.10,
+                          height: 1.1,
                           shadows: _textShadows,
                         ),
                       ),
@@ -299,7 +295,7 @@ class _TempleListPageState extends State<TempleListPage> {
                         style: TextStyle(
                           color: Colors.white.withOpacity(0.85),
                           fontSize: 11,
-                          height: 1.10,
+                          height: 1.1,
                           shadows: _textShadows,
                         ),
                       ),
@@ -310,7 +306,7 @@ class _TempleListPageState extends State<TempleListPage> {
             ),
           ),
 
-          // 🗑️表示中の薄暗さ
+          // 🗑️表示時の薄暗さ
           if (showTrash)
             Positioned.fill(
               child: Container(
@@ -321,7 +317,7 @@ class _TempleListPageState extends State<TempleListPage> {
               ),
             ),
 
-          // 🗑️（タイル右上）
+          // 🗑️アイコン
           if (showTrash)
             Positioned(
               right: 6,
@@ -346,7 +342,6 @@ class _TempleListPageState extends State<TempleListPage> {
 
   @override
   Widget build(BuildContext context) {
-    // 3列を基準
     const crossAxisCount = 3;
 
     return Scaffold(
@@ -355,13 +350,11 @@ class _TempleListPageState extends State<TempleListPage> {
           tooltip: '表紙へ',
           icon: const Icon(Icons.home),
           onPressed: () {
-            // 表紙から push で来ていれば pop で戻れる
             if (Navigator.of(context).canPop()) {
               Navigator.of(context).pop();
-              return;
+            } else {
+              Navigator.of(context).pushReplacementNamed('/');
             }
-            // もしこの画面がホーム扱いでも、'/'へ戻して表紙へ
-            Navigator.of(context).pushReplacementNamed('/');
           },
         ),
         title: Text('寺院一覧（${_sortLabel(_sortMode)}）'),
@@ -401,29 +394,16 @@ class _TempleListPageState extends State<TempleListPage> {
           ? const Center(
               child: Text('まだ寺院ページがありません。\n右下の「寺院を追加」から作成できます。'),
             )
-          : NotificationListener<ScrollNotification>(
-              onNotification: (n) {
-                // スクロール開始で🗑️を閉じる（誤操作防止）
-                if (_trashTempleId != null &&
-                    (n is ScrollStartNotification ||
-                        n is UserScrollNotification ||
-                        n is ScrollUpdateNotification)) {
-                  _hideTrash();
-                }
-                return false;
-              },
-              child: GridView.builder(
-                padding: const EdgeInsets.all(12),
-                itemCount: _entries.length,
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: crossAxisCount,
-                  crossAxisSpacing: 10,
-                  mainAxisSpacing: 10,
-                  // 御朱印っぽい縦長サムネ（帯が2行になったので少しだけ縦を稼ぐ）
-                  childAspectRatio: 0.70,
-                ),
-                itemBuilder: (context, index) => _gridTile(_entries[index]),
+          : GridView.builder(
+              padding: const EdgeInsets.all(12),
+              itemCount: _entries.length,
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: crossAxisCount,
+                crossAxisSpacing: 10,
+                mainAxisSpacing: 10,
+                childAspectRatio: 0.68,
               ),
+              itemBuilder: (context, index) => _gridTile(_entries[index]),
             ),
     );
   }
