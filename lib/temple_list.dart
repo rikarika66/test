@@ -26,8 +26,8 @@ class _TempleListPageState extends State<TempleListPage> {
   // 長押しで🗑️を出す（表示中タイルID）
   String? _trashTempleId;
 
-  // ★ 下帯（御朱印サムネ）のベース色：濃紺（藍）
-  static const Color _bandBaseColor = Color(0xFF1E2A38);
+// ★ 下帯（御朱印サムネ）のベース色：深緑（寺院向け）
+  static const Color _bandBaseColor = Color(0xFF1F3A2E);
 
   @override
   void initState() {
