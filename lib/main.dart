@@ -19,7 +19,7 @@ class GoshuinApp extends StatelessWidget {
       title: 'デジタル御朱印帳',
       debugShowCheckedModeBanner: false,
 
-      // 日本語カレンダー設定
+      // 日本語ローカライズ
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
@@ -34,7 +34,8 @@ class GoshuinApp extends StatelessWidget {
   }
 }
 
-/// 表紙（目次）
+/// ===============================
+/// 表紙（ホーム）
 class CoverHomePage extends StatefulWidget {
   const CoverHomePage({super.key});
 
@@ -43,16 +44,22 @@ class CoverHomePage extends StatefulWidget {
 }
 
 class _CoverHomePageState extends State<CoverHomePage> {
-  /// 季節で表紙を切り替え（PNG版）
+  /// 月で表紙画像を切り替え
   String _pickCoverImage() {
-    final m = DateTime.now().month;
-    if (m >= 6 && m <= 8) {
-      return 'assets/images/cover_summer.png';
+    final month = DateTime.now().month;
+
+    // 夏（6–8）
+    if (month >= 6 && month <= 8) {
+      return 'assets/images/cu.png';
     }
-    if (m >= 3 && m <= 5) {
-      return 'assets/images/cover_spring.png';
+
+    // 春（3–5）
+    if (month >= 3 && month <= 5) {
+      return 'assets/images/cs.png';
     }
-    return 'assets/images/cover_spring.png';
+
+    // それ以外（暫定で春）
+    return 'assets/images/cs.png';
   }
 
   Future<void> _pushSlide(Widget page) async {
@@ -78,7 +85,6 @@ class _CoverHomePageState extends State<CoverHomePage> {
     await _pushSlide(const TempleListPage());
   }
 
-  /// 「御朱印を記録」
   Future<void> _goRecord() async {
     final entry = TempleStore.newEntry();
     await TempleStore.upsert(entry);
@@ -145,7 +151,7 @@ class _CoverHomePageState extends State<CoverHomePage> {
             ),
           ),
 
-          // ===== 目次ボタン =====
+          // ===== メニューボタン =====
           Positioned(
             left: 0,
             right: 0,
@@ -180,6 +186,8 @@ class _CoverHomePageState extends State<CoverHomePage> {
   }
 }
 
+/// ===============================
+/// メニューボタン
 class _MenuButton extends StatelessWidget {
   const _MenuButton({
     required this.icon,
@@ -230,7 +238,8 @@ class _MenuButton extends StatelessWidget {
   }
 }
 
-/// 「このアプリについて」
+/// ===============================
+/// このアプリについて
 class AboutPage extends StatelessWidget {
   const AboutPage({super.key});
 
