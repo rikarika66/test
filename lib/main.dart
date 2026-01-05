@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
-import 'temple_list.dart'; // ★ 寺院一覧ページへ
+import 'temple_list.dart';
+import 'temple_store.dart';
+import 'book.dart';
 
 void main() {
   runApp(const GoshuinApp());
@@ -17,7 +19,7 @@ class GoshuinApp extends StatelessWidget {
       title: 'デジタル御朱印帳',
       debugShowCheckedModeBanner: false,
 
-      // ★ 日本語カレンダー設定
+      // 日本語カレンダー設定
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
@@ -26,27 +28,35 @@ class GoshuinApp extends StatelessWidget {
       supportedLocales: const [
         Locale('ja', 'JP'),
       ],
-      // ★ ここまで
 
-      home: const TempleGoshuinPage(),
+      home: const CoverHomePage(),
     );
   }
 }
 
-/// 表紙ページ（Kindle方式：右タップで次へ）
-class TempleGoshuinPage extends StatelessWidget {
-  const TempleGoshuinPage({super.key});
+/// 表紙（目次）
+class CoverHomePage extends StatefulWidget {
+  const CoverHomePage({super.key});
 
-  final String templeImagePath = 'assets/images/hutuuji.png';
-  final String goshuinImagePath = 'assets/images/hutuuji-gosyu.png';
+  @override
+  State<CoverHomePage> createState() => _CoverHomePageState();
+}
 
-  /// 寺院一覧ページへ進む（スライドアニメ）
-  void _goToTempleList(BuildContext context) {
-    Navigator.of(context).push(
+class _CoverHomePageState extends State<CoverHomePage> {
+  // 季節で出し分け（とりあえず：春=3-5、夏=6-8、それ以外は春）
+  String _pickCoverImage() {
+    final m = DateTime.now().month;
+    if (m >= 6 && m <= 8) return 'assets/images/cover_summer.jpg';
+    if (m >= 3 && m <= 5) return 'assets/images/cover_spring.jpg';
+    return 'assets/images/cover_spring.jpg';
+  }
+
+  Future<void> _pushSlide(Widget page) async {
+    await Navigator.of(context).push(
       PageRouteBuilder(
-        transitionDuration: const Duration(milliseconds: 350),
-        reverseTransitionDuration: const Duration(milliseconds: 350),
-        pageBuilder: (_, __, ___) => const TempleListPage(),
+        transitionDuration: const Duration(milliseconds: 280),
+        reverseTransitionDuration: const Duration(milliseconds: 280),
+        pageBuilder: (_, __, ___) => page,
         transitionsBuilder: (_, animation, __, child) {
           final offset = Tween<Offset>(
             begin: const Offset(1.0, 0.0),
@@ -60,67 +70,194 @@ class TempleGoshuinPage extends StatelessWidget {
     );
   }
 
+  Future<void> _goTempleList() async {
+    await _pushSlide(const TempleListPage());
+  }
+
+  /// 「御朱印を記録」＝ 新規寺院を作って BookPage を開く
+  Future<void> _goRecord() async {
+    final entry = TempleStore.newEntry();
+    await TempleStore.upsert(entry);
+
+    final all = await TempleStore.loadAll();
+    final ids = all.map((e) => e.id).toList();
+    final idx = ids.indexOf(entry.id);
+
+    await _pushSlide(
+      BookPage(
+        templeId: entry.id,
+        templeIds: ids,
+        currentIndex: idx >= 0 ? idx : 0,
+      ),
+    );
+  }
+
+  Future<void> _goAbout() async {
+    await _pushSlide(const AboutPage());
+  }
+
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
+    final coverPath = _pickCoverImage();
 
-      // ★ Kindle式：右半分タップでページ進む
-      onTapUp: (TapUpDetails details) {
-        final width = MediaQuery.of(context).size.width;
-        if (details.localPosition.dx > width * 0.5) {
-          _goToTempleList(context);
-        }
-      },
+    // ボタンを「70%」に：元のサイズの70%という意味で、
+    // ここでは “ボタン全体の見た目（余白/文字/アイコン）” を小さめにしています。
+    // さらに小さくしたい場合は _buttonScale を下げるだけでOK。
+    const double _buttonScale = 0.70;
 
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('寺院と御朱印'),
-          automaticallyImplyLeading: false,
-        ),
-        body: Stack(
-          fit: StackFit.expand,
-          children: [
-            Image.asset(
-              templeImagePath,
-              fit: BoxFit.cover,
-            ),
-            Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24.0),
-                child: AspectRatio(
-                  aspectRatio: 3 / 4,
-                  child: Image.asset(
-                    goshuinImagePath,
-                    fit: BoxFit.contain,
+    return Scaffold(
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          // 背景（表紙画像）
+          Image.asset(
+            coverPath,
+            fit: BoxFit.cover,
+          ),
+
+          // 上部タイトル（デジタル小さめ＋御朱印帳大きめ）
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 22,
+            left: 0,
+            right: 0,
+            child: Column(
+              children: const [
+                Text(
+                  'デジタル',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black87,
+                    letterSpacing: 1.5,
                   ),
                 ),
+                SizedBox(height: 4),
+                Text(
+                  '御朱印帳',
+                  style: TextStyle(
+                    fontSize: 36,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.black87,
+                    letterSpacing: 2,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // 下部：目次ボタン
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 28,
+            child: Transform.scale(
+              scale: _buttonScale,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  _MenuButton(
+                    icon: Icons.temple_buddhist,
+                    label: '寺院一覧',
+                    onTap: _goTempleList,
+                  ),
+                  _MenuButton(
+                    icon: Icons.edit_note,
+                    label: '御朱印を記録',
+                    onTap: _goRecord,
+                  ),
+                  _MenuButton(
+                    icon: Icons.info_outline,
+                    label: 'このアプリについて',
+                    onTap: _goAbout,
+                  ),
+                ],
               ),
             ),
-            Positioned(
-              right: 16,
-              bottom: 16,
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.4),
-                  borderRadius: BorderRadius.circular(12),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MenuButton extends StatelessWidget {
+  const _MenuButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    // ボタンの基本サイズ（Transform.scale で70%になる）
+    const double boxSize = 96;
+
+    return Material(
+      color: Colors.white.withOpacity(0.90),
+      borderRadius: BorderRadius.circular(18),
+      elevation: 6,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: onTap,
+        child: SizedBox(
+          width: boxSize,
+          height: boxSize,
+          child: Padding(
+            padding: const EdgeInsets.only(top: 14, left: 10, right: 10),
+            child: Column(
+              children: [
+                Icon(icon, size: 34, color: Colors.black87),
+                const Spacer(),
+                Text(
+                  label,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.black87,
+                  ),
                 ),
-                child: Text(
-                  _todayString(),
-                  style: const TextStyle(color: Colors.white, fontSize: 14),
-                ),
-              ),
+                const SizedBox(height: 10),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
   }
 }
 
-String _todayString() {
-  final now = DateTime.now();
-  return "${now.year}年${now.month}月${now.day}日";
+/// 「このアプリについて」ページ（とりあえず最小）
+class AboutPage extends StatelessWidget {
+  const AboutPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('このアプリについて')),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: ListView(
+          children: const [
+            Text(
+              'デジタル御朱印帳',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            ),
+            SizedBox(height: 12),
+            Text(
+              '御朱印を写真で記録し、寺院ごとに整理できるアプリです。\n\n'
+              '・寺院一覧：コレクション表示\n'
+              '・御朱印を記録：新しい寺院ページを作成\n\n'
+              '将来的にQRコードから寺院ページへ誘導する機能も追加予定です。',
+              style: TextStyle(fontSize: 14, height: 1.6),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
