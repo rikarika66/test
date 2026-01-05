@@ -94876,8 +94876,8 @@ P(a){return new A.As(B.KL,"\u30c7\u30b8\u30bf\u30eb\u5fa1\u6731\u5370\u5e33",B.W
 A.yu.prototype={
 aD(){return new A.EC()}}
 A.EC.prototype={
-aha(){var s="assets/images/cover_spring.jpg",r=A.b8(new A.ch(Date.now(),0,!1))
-if(r>=6&&r<=8)return"assets/images/cover_summer.jpg"
+aha(){var s="assets/images/cover_spring.png",r=A.b8(new A.ch(Date.now(),0,!1))
+if(r>=6&&r<=8)return"assets/images/cover_summer.png"
 if(r>=3&&r<=5)return s
 return s},
 qt(a){return this.ahr(a)},

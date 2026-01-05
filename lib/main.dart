@@ -43,12 +43,16 @@ class CoverHomePage extends StatefulWidget {
 }
 
 class _CoverHomePageState extends State<CoverHomePage> {
-  // 季節で出し分け（とりあえず：春=3-5、夏=6-8、それ以外は春）
+  /// 季節で表紙を切り替え（PNG版）
   String _pickCoverImage() {
     final m = DateTime.now().month;
-    if (m >= 6 && m <= 8) return 'assets/images/cover_summer.jpg';
-    if (m >= 3 && m <= 5) return 'assets/images/cover_spring.jpg';
-    return 'assets/images/cover_spring.jpg';
+    if (m >= 6 && m <= 8) {
+      return 'assets/images/cover_summer.png';
+    }
+    if (m >= 3 && m <= 5) {
+      return 'assets/images/cover_spring.png';
+    }
+    return 'assets/images/cover_spring.png';
   }
 
   Future<void> _pushSlide(Widget page) async {
@@ -74,7 +78,7 @@ class _CoverHomePageState extends State<CoverHomePage> {
     await _pushSlide(const TempleListPage());
   }
 
-  /// 「御朱印を記録」＝ 新規寺院を作って BookPage を開く
+  /// 「御朱印を記録」
   Future<void> _goRecord() async {
     final entry = TempleStore.newEntry();
     await TempleStore.upsert(entry);
@@ -99,23 +103,19 @@ class _CoverHomePageState extends State<CoverHomePage> {
   @override
   Widget build(BuildContext context) {
     final coverPath = _pickCoverImage();
-
-    // ボタンを「70%」に：元のサイズの70%という意味で、
-    // ここでは “ボタン全体の見た目（余白/文字/アイコン）” を小さめにしています。
-    // さらに小さくしたい場合は _buttonScale を下げるだけでOK。
-    const double _buttonScale = 0.70;
+    const double buttonScale = 0.70;
 
     return Scaffold(
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // 背景（表紙画像）
+          // ===== 表紙背景 =====
           Image.asset(
             coverPath,
             fit: BoxFit.cover,
           ),
 
-          // 上部タイトル（デジタル小さめ＋御朱印帳大きめ）
+          // ===== タイトル =====
           Positioned(
             top: MediaQuery.of(context).padding.top + 22,
             left: 0,
@@ -145,13 +145,13 @@ class _CoverHomePageState extends State<CoverHomePage> {
             ),
           ),
 
-          // 下部：目次ボタン
+          // ===== 目次ボタン =====
           Positioned(
             left: 0,
             right: 0,
             bottom: 28,
             child: Transform.scale(
-              scale: _buttonScale,
+              scale: buttonScale,
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
@@ -193,7 +193,6 @@ class _MenuButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // ボタンの基本サイズ（Transform.scale で70%になる）
     const double boxSize = 96;
 
     return Material(
@@ -231,7 +230,7 @@ class _MenuButton extends StatelessWidget {
   }
 }
 
-/// 「このアプリについて」ページ（とりあえず最小）
+/// 「このアプリについて」
 class AboutPage extends StatelessWidget {
   const AboutPage({super.key});
 
