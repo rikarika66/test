@@ -13,24 +13,24 @@ class CoverPage extends StatefulWidget {
 }
 
 class _CoverPageState extends State<CoverPage> {
-  /// 将来、秋・冬を追加する前提で「配列」で持つ
-  /// いまは 春(cs) / 夏(cu) だけ
+  /// 季節表紙（将来：秋・冬を追加予定）
   final List<_SeasonCover> _covers = const [
     _SeasonCover(label: '春', assetPath: 'assets/images/cs.png', icon: '🌸'),
     _SeasonCover(label: '夏', assetPath: 'assets/images/cu.png', icon: '☀️'),
-    // 追加予定：
-    // _SeasonCover(label: '秋', assetPath: 'assets/images/ca.png', icon: '🍁'),
-    // _SeasonCover(label: '冬', assetPath: 'assets/images/cw.png', icon: '❄️'),
   ];
 
-  int _index = 0; // 0=春, 1=夏...
-
-  void _setCoverIndex(int newIndex) {
-    setState(() => _index = newIndex);
-  }
+  int _index = 0;
 
   void _nextCover() {
-    setState(() => _index = (_index + 1) % _covers.length);
+    setState(() {
+      _index = (_index + 1) % _covers.length;
+    });
+  }
+
+  void _setCover(int index) {
+    setState(() {
+      _index = index;
+    });
   }
 
   @override
@@ -40,7 +40,7 @@ class _CoverPageState extends State<CoverPage> {
     return Scaffold(
       body: Stack(
         children: [
-          // ===== 表紙：季節の画像を「1枚だけ」全面表示 =====
+          // ================= 表紙画像（100%使用） =================
           Positioned.fill(
             child: Image.asset(
               cover.assetPath,
@@ -48,9 +48,7 @@ class _CoverPageState extends State<CoverPage> {
             ),
           ),
 
-          // ===== 切り替えUI（右上）=====
-          // ・アイコンをタップで「次の季節へ」
-          // ・長押し or メニューで直接選択も可能
+          // ================= 表紙切り替えUI =================
           Positioned(
             top: 0,
             right: 0,
@@ -58,23 +56,20 @@ class _CoverPageState extends State<CoverPage> {
               child: Padding(
                 padding: const EdgeInsets.only(top: 8, right: 8),
                 child: Row(
-                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    // 直接選択できるメニュー
                     PopupMenuButton<int>(
                       tooltip: '表紙を選ぶ',
-                      onSelected: _setCoverIndex,
-                      itemBuilder: (_) => List.generate(_covers.length, (i) {
-                        final c = _covers[i];
-                        return PopupMenuItem<int>(
+                      onSelected: _setCover,
+                      itemBuilder: (_) => List.generate(
+                        _covers.length,
+                        (i) => PopupMenuItem(
                           value: i,
-                          child: Text('${c.icon}  ${c.label}'),
-                        );
-                      }),
+                          child: Text('${_covers[i].icon} ${_covers[i].label}'),
+                        ),
+                      ),
                       child: _chip('${cover.icon} ${cover.label}'),
                     ),
                     const SizedBox(width: 8),
-                    // 次へ（ワンタップ切替）
                     InkWell(
                       onTap: _nextCover,
                       borderRadius: BorderRadius.circular(999),
@@ -86,7 +81,7 @@ class _CoverPageState extends State<CoverPage> {
             ),
           ),
 
-          // ===== ここが本題：下の3ボタンの「押せる範囲」だけを指定 =====
+          // ================= 下ボタンエリア =================
           Positioned(
             left: 0,
             right: 0,
@@ -94,25 +89,23 @@ class _CoverPageState extends State<CoverPage> {
             child: SafeArea(
               top: false,
               child: Padding(
-                // あなたの下ボタンの位置に合わせて調整（まずはこれでOK）
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                 child: SizedBox(
-                  height: 86, // ★あなたの下ボタンの高さに合わせて後で調整
+                  height: 90, // ★必要に応じて微調整
                   child: Stack(
                     children: [
-                      // ① 見た目（あなたの既存の下ボタンUI）をここに置く
-                      // すでにcoverにあるなら、そのコードをこの中へ移してください。
+                      // -------- 見た目（変更しない） --------
                       const Positioned.fill(
-                        child: _BottomButtonsVisualPlaceholder(),
+                        child: _BottomButtonsVisual(),
                       ),
 
-                      // ② 見た目の上に「透明タップ領域」を3分割で被せる（範囲指定）
+                      // -------- タップ範囲（透明） --------
                       Positioned.fill(
                         child: Row(
                           children: [
                             Expanded(
                               child: _TapArea(
-                                semanticsLabel: '寺院リスト',
+                                label: '寺院リスト',
                                 onTap: () {
                                   Navigator.push(
                                     context,
@@ -126,9 +119,8 @@ class _CoverPageState extends State<CoverPage> {
                             const SizedBox(width: 10),
                             Expanded(
                               child: _TapArea(
-                                semanticsLabel: 'きろく',
+                                label: 'きろく',
                                 onTap: () async {
-                                  // BookPageは templeId 必須 → 最新寺院を開く
                                   final entries = await TempleStore.loadAll();
                                   if (!context.mounted) return;
 
@@ -161,7 +153,7 @@ class _CoverPageState extends State<CoverPage> {
                             const SizedBox(width: 10),
                             Expanded(
                               child: _TapArea(
-                                semanticsLabel: 'このアプリについて',
+                                label: 'このアプリについて',
                                 onTap: () {
                                   Navigator.push(
                                     context,
@@ -195,18 +187,21 @@ class _CoverPageState extends State<CoverPage> {
       ),
       child: Text(
         text,
-        style:
-            const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+        style: const TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.w700,
+        ),
       ),
     );
   }
 }
 
-/// 季節表紙の定義（将来拡張しやすい）
+// ================= 季節表紙定義 =================
 class _SeasonCover {
   final String label;
   final String assetPath;
   final String icon;
+
   const _SeasonCover({
     required this.label,
     required this.assetPath,
@@ -214,40 +209,12 @@ class _SeasonCover {
   });
 }
 
-/// 透明のタップ領域（見た目を変えずに“範囲だけ”指定する）
-class _TapArea extends StatelessWidget {
-  final String semanticsLabel;
-  final VoidCallback onTap;
-
-  const _TapArea({
-    required this.semanticsLabel,
-    required this.onTap,
-  });
+// ================= 下ボタンの見た目 =================
+class _BottomButtonsVisual extends StatelessWidget {
+  const _BottomButtonsVisual();
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        child: Semantics(
-          button: true,
-          label: semanticsLabel,
-          child: const SizedBox.expand(),
-        ),
-      ),
-    );
-  }
-}
-
-/// ここは「あなたの下ボタンの見た目」を置く場所
-/// いまはプレースホルダー。見た目を変えたくないので、あなたの既存UIに差し替えてください。
-class _BottomButtonsVisualPlaceholder extends StatelessWidget {
-  const _BottomButtonsVisualPlaceholder();
-
-  @override
-  Widget build(BuildContext context) {
-    // 見た目は後であなたの既存ボタンに置き換える前提
     return Row(
       children: [
         Expanded(child: _card('寺院リスト')),
@@ -266,7 +233,37 @@ class _BottomButtonsVisualPlaceholder extends StatelessWidget {
         color: Colors.white.withOpacity(0.85),
         borderRadius: BorderRadius.circular(14),
       ),
-      child: Text(text, textAlign: TextAlign.center),
+      child: Text(
+        text,
+        textAlign: TextAlign.center,
+        style: const TextStyle(fontWeight: FontWeight.w700),
+      ),
+    );
+  }
+}
+
+// ================= 透明タップ領域 =================
+class _TapArea extends StatelessWidget {
+  final String label;
+  final VoidCallback onTap;
+
+  const _TapArea({
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Semantics(
+          button: true,
+          label: label,
+          child: const SizedBox.expand(),
+        ),
+      ),
     );
   }
 }
