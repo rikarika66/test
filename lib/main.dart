@@ -34,8 +34,7 @@ class GoshuinApp extends StatelessWidget {
   }
 }
 
-/// ===============================
-/// 表紙（ホーム）
+/// 表紙（目次）
 class CoverHomePage extends StatefulWidget {
   const CoverHomePage({super.key});
 
@@ -44,21 +43,11 @@ class CoverHomePage extends StatefulWidget {
 }
 
 class _CoverHomePageState extends State<CoverHomePage> {
-  /// 月で表紙画像を切り替え
+  /// 季節で表紙を切り替え（cs=春, cu=夏）
   String _pickCoverImage() {
-    final month = DateTime.now().month;
-
-    // 夏（6–8）
-    if (month >= 6 && month <= 8) {
-      return 'assets/images/cu.png';
-    }
-
-    // 春（3–5）
-    if (month >= 3 && month <= 5) {
-      return 'assets/images/cs.png';
-    }
-
-    // それ以外（暫定で春）
+    final m = DateTime.now().month;
+    if (m >= 6 && m <= 8) return 'assets/images/cu.png';
+    if (m >= 3 && m <= 5) return 'assets/images/cs.png';
     return 'assets/images/cs.png';
   }
 
@@ -72,9 +61,7 @@ class _CoverHomePageState extends State<CoverHomePage> {
           final offset = Tween<Offset>(
             begin: const Offset(1.0, 0.0),
             end: Offset.zero,
-          ).animate(
-            CurvedAnimation(parent: animation, curve: Curves.easeOut),
-          );
+          ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOut));
           return SlideTransition(position: offset, child: child);
         },
       ),
@@ -85,6 +72,7 @@ class _CoverHomePageState extends State<CoverHomePage> {
     await _pushSlide(const TempleListPage());
   }
 
+  /// 「御朱印を記録」
   Future<void> _goRecord() async {
     final entry = TempleStore.newEntry();
     await TempleStore.upsert(entry);
@@ -115,10 +103,25 @@ class _CoverHomePageState extends State<CoverHomePage> {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // ===== 表紙背景 =====
+          // ===== 表紙背景（表示確認用に errorBuilder 付き）=====
           Image.asset(
             coverPath,
             fit: BoxFit.cover,
+            // 表示されない原因がある場合、ここに必ず出ます
+            errorBuilder: (context, error, stack) {
+              return Container(
+                color: Colors.white,
+                alignment: Alignment.center,
+                padding: const EdgeInsets.all(16),
+                child: Text(
+                  '表紙画像を読み込めませんでした。\n\n'
+                  'パス:\n$coverPath\n\n'
+                  'エラー:\n$error',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 14, height: 1.4),
+                ),
+              );
+            },
           ),
 
           // ===== タイトル =====
@@ -151,7 +154,7 @@ class _CoverHomePageState extends State<CoverHomePage> {
             ),
           ),
 
-          // ===== メニューボタン =====
+          // ===== 目次ボタン =====
           Positioned(
             left: 0,
             right: 0,
@@ -186,8 +189,6 @@ class _CoverHomePageState extends State<CoverHomePage> {
   }
 }
 
-/// ===============================
-/// メニューボタン
 class _MenuButton extends StatelessWidget {
   const _MenuButton({
     required this.icon,
@@ -238,8 +239,7 @@ class _MenuButton extends StatelessWidget {
   }
 }
 
-/// ===============================
-/// このアプリについて
+/// 「このアプリについて」
 class AboutPage extends StatelessWidget {
   const AboutPage({super.key});
 
