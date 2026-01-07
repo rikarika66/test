@@ -3,12 +3,9 @@ const MANIFEST = 'flutter-app-manifest';
 const TEMP = 'flutter-temp-cache';
 const CACHE_NAME = 'flutter-app-cache';
 
-const RESOURCES = {"assets/AssetManifest.bin": "b534fdaa2ab8bb51d2f92d06477c8f38",
-"assets/AssetManifest.bin.json": "fe9509161dede1f3698124c463c51537",
-"assets/AssetManifest.json": "36d018bec70333c9fef0cc817dc3f55b",
-"assets/assets/images/hutuuji-gosyu.png": "03b8601741024ceace8eaee0beb93434",
-"assets/assets/images/hutuuji.png": "7d8a2a20bea0c5531b9393955cf7639c",
-"assets/assets/images/wagara1.png": "5062d40acb061ca3d56bbf2fedb84ecf",
+const RESOURCES = {"assets/AssetManifest.bin": "0b0a3415aad49b6e9bf965ff578614f9",
+"assets/AssetManifest.bin.json": "a1fee2517bf598633e2f67fcf3e26c94",
+"assets/AssetManifest.json": "99914b932bd37a50b983c5e7c90ae93b",
 "assets/FontManifest.json": "7b2a36307916a9721811788013e65289",
 "assets/fonts/MaterialIcons-Regular.otf": "c3d792b8a1886fbf0179800ea8e6bb78",
 "assets/NOTICES": "8cea2c514b24cd70edd42075d884cd3c",
@@ -27,7 +24,7 @@ const RESOURCES = {"assets/AssetManifest.bin": "b534fdaa2ab8bb51d2f92d06477c8f38
 "canvaskit/skwasm_heavy.wasm": "8034ad26ba2485dab2fd49bdd786837b",
 "favicon.png": "5dcef449791fa27946b3d35ad8803796",
 "flutter.js": "888483df48293866f9f41d3d9274a779",
-"flutter_bootstrap.js": "3a589a7dfa739146c7a926806972bee7",
+"flutter_bootstrap.js": "09638c01ca5f9833ed9296fce9f9411a",
 "icons/Icon-192.png": "ac9a721a12bbc803b44f645561ecb1e1",
 "icons/Icon-512.png": "96e752610906ba2a93c65f8abe1645f1",
 "icons/Icon-maskable-192.png": "c457ef57daa1d16f64b27b786ec2ea3c",

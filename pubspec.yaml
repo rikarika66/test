@@ -28,7 +28,5 @@ dev_dependencies:
 flutter:
   uses-material-design: true
 
-  assets:
-    - assets/images/hutuuji.png
-    - assets/images/hutuuji-gosyu.png
-    - assets/images/wagara1.png
+assets:
+  - assets/images/
