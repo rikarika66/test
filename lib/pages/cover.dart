@@ -13,7 +13,6 @@ class CoverPage extends StatefulWidget {
 }
 
 class _CoverPageState extends State<CoverPage> {
-  /// 季節表紙（将来：秋・冬を追加予定）
   final List<_SeasonCover> _covers = const [
     _SeasonCover(label: '春', assetPath: 'assets/images/cs.png', icon: '🌸'),
     _SeasonCover(label: '夏', assetPath: 'assets/images/cu.png', icon: '☀️'),
@@ -22,15 +21,7 @@ class _CoverPageState extends State<CoverPage> {
   int _index = 0;
 
   void _nextCover() {
-    setState(() {
-      _index = (_index + 1) % _covers.length;
-    });
-  }
-
-  void _setCover(int index) {
-    setState(() {
-      _index = index;
-    });
+    setState(() => _index = (_index + 1) % _covers.length);
   }
 
   @override
@@ -40,7 +31,7 @@ class _CoverPageState extends State<CoverPage> {
     return Scaffold(
       body: Stack(
         children: [
-          // ================= 表紙画像（100%使用） =================
+          // ===== 表紙（100%表示）=====
           Positioned.fill(
             child: Image.asset(
               cover.assetPath,
@@ -48,40 +39,23 @@ class _CoverPageState extends State<CoverPage> {
             ),
           ),
 
-          // ================= 表紙切り替えUI =================
+          // ===== 表紙切替 =====
           Positioned(
             top: 0,
             right: 0,
             child: SafeArea(
               child: Padding(
-                padding: const EdgeInsets.only(top: 8, right: 8),
-                child: Row(
-                  children: [
-                    PopupMenuButton<int>(
-                      tooltip: '表紙を選ぶ',
-                      onSelected: _setCover,
-                      itemBuilder: (_) => List.generate(
-                        _covers.length,
-                        (i) => PopupMenuItem(
-                          value: i,
-                          child: Text('${_covers[i].icon} ${_covers[i].label}'),
-                        ),
-                      ),
-                      child: _chip('${cover.icon} ${cover.label}'),
-                    ),
-                    const SizedBox(width: 8),
-                    InkWell(
-                      onTap: _nextCover,
-                      borderRadius: BorderRadius.circular(999),
-                      child: _chip('切替'),
-                    ),
-                  ],
+                padding: const EdgeInsets.all(8),
+                child: InkWell(
+                  onTap: _nextCover,
+                  borderRadius: BorderRadius.circular(999),
+                  child: _chip('${cover.icon} ${cover.label}'),
                 ),
               ),
             ),
           ),
 
-          // ================= 下ボタンエリア =================
+          // ===== 下ボタンエリア =====
           Positioned(
             left: 0,
             right: 0,
@@ -89,23 +63,24 @@ class _CoverPageState extends State<CoverPage> {
             child: SafeArea(
               top: false,
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                // ★③ 左右・下の余白（まずここを微調整）
+                padding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
                 child: SizedBox(
-                  height: 90, // ★必要に応じて微調整
+                  // ★② 下ボタン全体の高さ
+                  height: 96,
                   child: Stack(
                     children: [
-                      // -------- 見た目（変更しない） --------
+                      // -------- 見た目：あなたのボタン画像 --------
                       const Positioned.fill(
-                        child: _BottomButtonsVisual(),
+                        child: _BottomButtonsImage(),
                       ),
 
-                      // -------- タップ範囲（透明） --------
+                      // -------- 操作：透明タップ範囲 --------
                       Positioned.fill(
                         child: Row(
                           children: [
                             Expanded(
                               child: _TapArea(
-                                label: '寺院リスト',
                                 onTap: () {
                                   Navigator.push(
                                     context,
@@ -116,10 +91,8 @@ class _CoverPageState extends State<CoverPage> {
                                 },
                               ),
                             ),
-                            const SizedBox(width: 10),
                             Expanded(
                               child: _TapArea(
-                                label: 'きろく',
                                 onTap: () async {
                                   final entries = await TempleStore.loadAll();
                                   if (!context.mounted) return;
@@ -127,8 +100,7 @@ class _CoverPageState extends State<CoverPage> {
                                   if (entries.isEmpty) {
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       const SnackBar(
-                                        content: Text(
-                                            'まだ寺院の記録がありません。先に寺院を追加してください。'),
+                                        content: Text('まだ寺院の記録がありません。'),
                                       ),
                                     );
                                     return;
@@ -150,10 +122,8 @@ class _CoverPageState extends State<CoverPage> {
                                 },
                               ),
                             ),
-                            const SizedBox(width: 10),
                             Expanded(
                               child: _TapArea(
-                                label: 'このアプリについて',
                                 onTap: () {
                                   Navigator.push(
                                     context,
@@ -196,7 +166,7 @@ class _CoverPageState extends State<CoverPage> {
   }
 }
 
-// ================= 季節表紙定義 =================
+// ===== 季節定義 =====
 class _SeasonCover {
   final String label;
   final String assetPath;
@@ -209,48 +179,30 @@ class _SeasonCover {
   });
 }
 
-// ================= 下ボタンの見た目 =================
-class _BottomButtonsVisual extends StatelessWidget {
-  const _BottomButtonsVisual();
+// ===== あなたの下ボタン（画像1枚）=====
+class _BottomButtonsImage extends StatelessWidget {
+  const _BottomButtonsImage();
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(child: _card('寺院リスト')),
-        const SizedBox(width: 10),
-        Expanded(child: _card('きろく')),
-        const SizedBox(width: 10),
-        Expanded(child: _card('このアプリについて')),
-      ],
-    );
-  }
-
-  Widget _card(String text) {
-    return Container(
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.85),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Text(
-        text,
-        textAlign: TextAlign.center,
-        style: const TextStyle(fontWeight: FontWeight.w700),
+    return Center(
+      child: FractionallySizedBox(
+        // ★① ボタン画像の横サイズ（0.8〜0.95で調整）
+        widthFactor: 0.8,
+        child: Image.asset(
+          'assets/images/bottom_buttons.png', // ←あなたの画像
+          fit: BoxFit.contain,
+        ),
       ),
     );
   }
 }
 
-// ================= 透明タップ領域 =================
+// ===== 透明タップ範囲 =====
 class _TapArea extends StatelessWidget {
-  final String label;
   final VoidCallback onTap;
 
-  const _TapArea({
-    required this.label,
-    required this.onTap,
-  });
+  const _TapArea({required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -258,11 +210,7 @@ class _TapArea extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        child: Semantics(
-          button: true,
-          label: label,
-          child: const SizedBox.expand(),
-        ),
+        child: const SizedBox.expand(),
       ),
     );
   }
