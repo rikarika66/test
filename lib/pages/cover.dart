@@ -5,173 +5,179 @@ import '../book.dart';
 import '../temple_store.dart';
 import 'about.dart';
 
-class CoverPage extends StatelessWidget {
+class CoverPage extends StatefulWidget {
   const CoverPage({super.key});
 
-  // 背景画像（あなたのassetsに合わせて変更OK）
-  final String _backgroundPath = 'assets/images/hutuuji.png';
+  @override
+  State<CoverPage> createState() => _CoverPageState();
+}
 
-  // 表紙中央に見せたい画像（無いならファイル名を空にしてもOK）
-  final String _centerImagePath = 'assets/images/hutuuji-gosyu.png';
+class _CoverPageState extends State<CoverPage> {
+  /// 将来、秋・冬を追加する前提で「配列」で持つ
+  /// いまは 春(cs) / 夏(cu) だけ
+  final List<_SeasonCover> _covers = const [
+    _SeasonCover(label: '春', assetPath: 'assets/images/cs.png', icon: '🌸'),
+    _SeasonCover(label: '夏', assetPath: 'assets/images/cu.png', icon: '☀️'),
+    // 追加予定：
+    // _SeasonCover(label: '秋', assetPath: 'assets/images/ca.png', icon: '🍁'),
+    // _SeasonCover(label: '冬', assetPath: 'assets/images/cw.png', icon: '❄️'),
+  ];
+
+  int _index = 0; // 0=春, 1=夏...
+
+  void _setCoverIndex(int newIndex) {
+    setState(() => _index = newIndex);
+  }
+
+  void _nextCover() {
+    setState(() => _index = (_index + 1) % _covers.length);
+  }
 
   @override
   Widget build(BuildContext context) {
+    final cover = _covers[_index];
+
     return Scaffold(
       body: Stack(
-        fit: StackFit.expand,
         children: [
-          // 背景
-          Image.asset(_backgroundPath, fit: BoxFit.cover),
+          // ===== 表紙：季節の画像を「1枚だけ」全面表示 =====
+          Positioned.fill(
+            child: Image.asset(
+              cover.assetPath,
+              fit: BoxFit.cover,
+            ),
+          ),
 
-          // 文字・ボタンを見やすくする薄暗いレイヤー
-          Container(color: Colors.black.withOpacity(0.25)),
-
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                children: [
-                  const SizedBox(height: 6),
-
-                  // 表紙内タイトル（※他画面側のタイトル/ボタンは不要）
-                  const Text(
-                    'デジタル御朱印帳',
-                    style: TextStyle(
-                      fontSize: 26,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white,
-                      shadows: [
-                        Shadow(blurRadius: 6, color: Colors.black54),
-                      ],
+          // ===== 切り替えUI（右上）=====
+          // ・アイコンをタップで「次の季節へ」
+          // ・長押し or メニューで直接選択も可能
+          Positioned(
+            top: 0,
+            right: 0,
+            child: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.only(top: 8, right: 8),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // 直接選択できるメニュー
+                    PopupMenuButton<int>(
+                      tooltip: '表紙を選ぶ',
+                      onSelected: _setCoverIndex,
+                      itemBuilder: (_) => List.generate(_covers.length, (i) {
+                        final c = _covers[i];
+                        return PopupMenuItem<int>(
+                          value: i,
+                          child: Text('${c.icon}  ${c.label}'),
+                        );
+                      }),
+                      child: _chip('${cover.icon} ${cover.label}'),
                     ),
-                  ),
-
-                  const SizedBox(height: 14),
-
-                  // 中央エリア（画像が無くても落ちない）
-                  Expanded(
-                    child: Center(
-                      child: AspectRatio(
-                        aspectRatio: 3 / 4,
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(18),
-                          child: Stack(
-                            fit: StackFit.expand,
-                            children: [
-                              Container(color: Colors.black.withOpacity(0.12)),
-
-                              // 画像が無い/読み込めない場合でもクラッシュしない
-                              if (_centerImagePath.trim().isNotEmpty)
-                                Image.asset(
-                                  _centerImagePath,
-                                  fit: BoxFit.contain,
-                                  errorBuilder: (_, __, ___) =>
-                                      const SizedBox.shrink(),
-                                ),
-
-                              // 日付表示
-                              Positioned(
-                                right: 10,
-                                bottom: 10,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 10, vertical: 6),
-                                  decoration: BoxDecoration(
-                                    color: Colors.black.withOpacity(0.40),
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: Text(
-                                    _todayString(),
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 13,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
+                    const SizedBox(width: 8),
+                    // 次へ（ワンタップ切替）
+                    InkWell(
+                      onTap: _nextCover,
+                      borderRadius: BorderRadius.circular(999),
+                      child: _chip('切替'),
                     ),
-                  ),
+                  ],
+                ),
+              ),
+            ),
+          ),
 
-                  const SizedBox(height: 12),
-
-                  // 3ボタン（左→右）
-                  Row(
+          // ===== ここが本題：下の3ボタンの「押せる範囲」だけを指定 =====
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: SafeArea(
+              top: false,
+              child: Padding(
+                // あなたの下ボタンの位置に合わせて調整（まずはこれでOK）
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                child: SizedBox(
+                  height: 86, // ★あなたの下ボタンの高さに合わせて後で調整
+                  child: Stack(
                     children: [
-                      Expanded(
-                        child: _CoverButton(
-                          label: '寺院リスト',
-                          icon: Icons.temple_buddhist,
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => const TempleListPage(),
-                              ),
-                            );
-                          },
-                        ),
+                      // ① 見た目（あなたの既存の下ボタンUI）をここに置く
+                      // すでにcoverにあるなら、そのコードをこの中へ移してください。
+                      const Positioned.fill(
+                        child: _BottomButtonsVisualPlaceholder(),
                       ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: _CoverButton(
-                          label: 'きろく',
-                          icon: Icons.book,
-                          onTap: () async {
-                            // ★BookPage は templeId 必須なので、最新寺院を開く
-                            final entries = await TempleStore.loadAll();
 
-                            if (!context.mounted) return;
-
-                            if (entries.isEmpty) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('まだ寺院の記録がありません。先に寺院を追加してください。'),
-                                ),
-                              );
-                              return;
-                            }
-
-                            // 先頭＝最新（TempleStoreの実装が日付降順なら最新）
-                            final ids = entries.map((e) => e.id).toList();
-                            final first = entries.first;
-
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => BookPage(
-                                  templeId: first.id,
-                                  templeIds: ids,
-                                  currentIndex: 0,
-                                ),
+                      // ② 見た目の上に「透明タップ領域」を3分割で被せる（範囲指定）
+                      Positioned.fill(
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: _TapArea(
+                                semanticsLabel: '寺院リスト',
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => const TempleListPage(),
+                                    ),
+                                  );
+                                },
                               ),
-                            );
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: _CoverButton(
-                          label: 'このアプリについて',
-                          icon: Icons.info_outline,
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => const AboutPage(),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: _TapArea(
+                                semanticsLabel: 'きろく',
+                                onTap: () async {
+                                  // BookPageは templeId 必須 → 最新寺院を開く
+                                  final entries = await TempleStore.loadAll();
+                                  if (!context.mounted) return;
+
+                                  if (entries.isEmpty) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text(
+                                            'まだ寺院の記録がありません。先に寺院を追加してください。'),
+                                      ),
+                                    );
+                                    return;
+                                  }
+
+                                  final ids = entries.map((e) => e.id).toList();
+                                  final first = entries.first;
+
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => BookPage(
+                                        templeId: first.id,
+                                        templeIds: ids,
+                                        currentIndex: 0,
+                                      ),
+                                    ),
+                                  );
+                                },
                               ),
-                            );
-                          },
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: _TapArea(
+                                semanticsLabel: 'このアプリについて',
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => const AboutPage(),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
                   ),
-
-                  const SizedBox(height: 14),
-                ],
+                ),
               ),
             ),
           ),
@@ -179,52 +185,88 @@ class CoverPage extends StatelessWidget {
       ),
     );
   }
+
+  Widget _chip(String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.35),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        text,
+        style:
+            const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+      ),
+    );
+  }
 }
 
-class _CoverButton extends StatelessWidget {
+/// 季節表紙の定義（将来拡張しやすい）
+class _SeasonCover {
   final String label;
-  final IconData icon;
+  final String assetPath;
+  final String icon;
+  const _SeasonCover({
+    required this.label,
+    required this.assetPath,
+    required this.icon,
+  });
+}
+
+/// 透明のタップ領域（見た目を変えずに“範囲だけ”指定する）
+class _TapArea extends StatelessWidget {
+  final String semanticsLabel;
   final VoidCallback onTap;
 
-  const _CoverButton({
-    required this.label,
-    required this.icon,
+  const _TapArea({
+    required this.semanticsLabel,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.white.withOpacity(0.90),
-      borderRadius: BorderRadius.circular(14),
+      color: Colors.transparent,
       child: InkWell(
-        borderRadius: BorderRadius.circular(14),
         onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 22, color: Colors.black87),
-              const SizedBox(height: 8),
-              Text(
-                label,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: Colors.black87,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
+        child: Semantics(
+          button: true,
+          label: semanticsLabel,
+          child: const SizedBox.expand(),
         ),
       ),
     );
   }
 }
 
-String _todayString() {
-  final now = DateTime.now();
-  return "${now.year}年${now.month}月${now.day}日";
+/// ここは「あなたの下ボタンの見た目」を置く場所
+/// いまはプレースホルダー。見た目を変えたくないので、あなたの既存UIに差し替えてください。
+class _BottomButtonsVisualPlaceholder extends StatelessWidget {
+  const _BottomButtonsVisualPlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    // 見た目は後であなたの既存ボタンに置き換える前提
+    return Row(
+      children: [
+        Expanded(child: _card('寺院リスト')),
+        const SizedBox(width: 10),
+        Expanded(child: _card('きろく')),
+        const SizedBox(width: 10),
+        Expanded(child: _card('このアプリについて')),
+      ],
+    );
+  }
+
+  Widget _card(String text) {
+    return Container(
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.85),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Text(text, textAlign: TextAlign.center),
+    );
+  }
 }
