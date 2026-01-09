@@ -204,7 +204,7 @@ class _BottomButtonsImage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: FractionallySizedBox(
-        widthFactor: widthFactor, // 0.8
+        widthFactor: widthFactor, // 0.86
         child: Image.asset(
           'assets/images/bottom_buttons.png', // ★あなたの画像名に合わせて変更
           fit: BoxFit.contain,
