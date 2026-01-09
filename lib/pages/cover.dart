@@ -64,7 +64,7 @@ class _CoverPageState extends State<CoverPage> {
               top: false,
               child: Padding(
                 // ★③ 左右・下の余白（まずここを微調整）
-                padding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
+                padding: const EdgeInsets.fromLTRB(16, 0, 24, 20),
                 child: SizedBox(
                   // ★② 下ボタン全体の高さ
                   height: 96,
