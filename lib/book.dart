@@ -651,7 +651,44 @@ class _BookPageState extends State<BookPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // 寺院プロフィール
+// 御朱印（先に表示）
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            '御朱印（最大2つ）',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              Expanded(
+                                  child: _goshuinSlot(slot: 0, label: '御朱印①')),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                  child: _goshuinSlot(slot: 1, label: '御朱印②')),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          const Text(
+                            'タップ：追加/拡大　長押し：🗑️表示',
+                            style:
+                                TextStyle(color: Colors.black54, fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 24),
+
+// 寺院プロフィール（後に表示）
                   Card(
                     child: Padding(
                       padding: const EdgeInsets.all(16),
@@ -699,43 +736,6 @@ class _BookPageState extends State<BookPage> {
                             controller: _honzonController,
                             onChanged: (_) => _saveNow(),
                             decoration: const InputDecoration(labelText: '御本尊'),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 24),
-
-                  // 御朱印
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            '御朱印（最大2つ）',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          Row(
-                            children: [
-                              Expanded(
-                                  child: _goshuinSlot(slot: 0, label: '御朱印①')),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                  child: _goshuinSlot(slot: 1, label: '御朱印②')),
-                            ],
-                          ),
-                          const SizedBox(height: 6),
-                          const Text(
-                            'タップ：追加/拡大　長押し：🗑️表示',
-                            style:
-                                TextStyle(color: Colors.black54, fontSize: 12),
                           ),
                         ],
                       ),
