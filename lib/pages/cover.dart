@@ -225,7 +225,6 @@ class _SeasonCover {
   });
 }
 
-// ===== 透明タップ範囲 =====
 class _TapArea extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
@@ -241,6 +240,13 @@ class _TapArea extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
+
+        // ★グレーの当たり表示を完全に消す
+        splashColor: Colors.transparent,
+        highlightColor: Colors.transparent,
+        hoverColor: Colors.transparent,
+        focusColor: Colors.transparent,
+
         child: Semantics(
           button: true,
           label: label,
