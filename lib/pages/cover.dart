@@ -70,18 +70,12 @@ class _CoverPageState extends State<CoverPage> {
                   height: 96, // 必要なら微調整
                   child: Stack(
                     children: [
-                      // --- 見た目：あなたのボタン画像（widthFactor:0.8） ---
-                      const Positioned.fill(
-                        child: _BottomButtonsImage(
-                          widthFactor: 0.8,
-                        ),
-                      ),
-
-                      // --- Aの本題：タップ範囲も同じwidthFactor(0.8)に揃える ---
                       Positioned.fill(
-                        child: Center(
+                        child: Align(
+                          // ★ここで左右を微調整：マイナスで左へ、プラスで右へ
+                          alignment: const Alignment(-0.06, 0),
                           child: FractionallySizedBox(
-                            widthFactor: 0.8, // ★画像と同じ
+                            widthFactor: 0.8,
                             child: Row(
                               children: [
                                 Expanded(
@@ -91,9 +85,8 @@ class _CoverPageState extends State<CoverPage> {
                                       Navigator.push(
                                         context,
                                         MaterialPageRoute(
-                                          builder: (_) =>
-                                              const TempleListPage(),
-                                        ),
+                                            builder: (_) =>
+                                                const TempleListPage()),
                                       );
                                     },
                                   ),
@@ -110,8 +103,7 @@ class _CoverPageState extends State<CoverPage> {
                                         ScaffoldMessenger.of(context)
                                             .showSnackBar(
                                           const SnackBar(
-                                            content: Text('まだ寺院の記録がありません。'),
-                                          ),
+                                              content: Text('まだ寺院の記録がありません。')),
                                         );
                                         return;
                                       }
@@ -140,8 +132,7 @@ class _CoverPageState extends State<CoverPage> {
                                       Navigator.push(
                                         context,
                                         MaterialPageRoute(
-                                          builder: (_) => const AboutPage(),
-                                        ),
+                                            builder: (_) => const AboutPage()),
                                       );
                                     },
                                   ),
