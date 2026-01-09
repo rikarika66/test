@@ -188,7 +188,7 @@ class _BottomButtonsImage extends StatelessWidget {
     return Center(
       child: FractionallySizedBox(
         // ★① ボタン画像の横サイズ（0.8〜0.95で調整）
-        widthFactor: 0.75,
+        widthFactor: 0.8,
         child: Image.asset(
           'assets/images/bottom_buttons.png', // ←あなたの画像
           fit: BoxFit.contain,
