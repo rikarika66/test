@@ -31,7 +31,7 @@ class _CoverPageState extends State<CoverPage> {
   // ・bottomPadding：下エリアの余白
   //
   // いまの状況に合わせて “ここだけ” 調整すればOKです。
-  static const double _tapWidthFactor = 0.80;
+  static const double _tapWidthFactor = 0.86;
   static const double _tapShiftX = -0.08; // 左が内側 → もっと左なら -0.08 / 行き過ぎなら -0.04
   static const double _bottomAreaHeight = 96;
   static const EdgeInsets _bottomPadding = EdgeInsets.fromLTRB(24, 0, 24, 20);
