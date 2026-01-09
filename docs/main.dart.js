@@ -94771,7 +94771,7 @@ $1(a){return B.Hy},
 $S:560}
 A.H1.prototype={}
 A.X6.prototype={
-P(a){return A.fo(new A.NE(0.72,A.aIW("assets/images/bottom_buttons.png",B.nT),null),null,null)}}
+P(a){return A.fo(new A.NE(0.75,A.aIW("assets/images/bottom_buttons.png",B.nT),null),null,null)}}
 A.wP.prototype={
 P(a){var s=null
 return A.fa(!1,B.M,!0,s,A.ll(!1,s,!0,B.a4C,s,!0,s,s,s,s,s,s,s,s,s,s,this.c,s,s,s,s,s),B.y,B.C,0,s,s,s,s,s,B.bG)}}
