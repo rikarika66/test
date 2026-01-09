@@ -67,7 +67,7 @@ class _CoverPageState extends State<CoverPage> {
                 padding: const EdgeInsets.fromLTRB(16, 0, 24, 20),
                 child: SizedBox(
                   // ★② 下ボタン全体の高さ
-                  height: 96,
+                  height: 88,
                   child: Stack(
                     children: [
                       // -------- 見た目：あなたのボタン画像 --------
