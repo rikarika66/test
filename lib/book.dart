@@ -217,6 +217,9 @@ class _BookPageState extends State<BookPage> {
   }
 
   Future<void> _pickDate() async {
+    // フォーカスを外して、日付欄の帯（ハイライト）を出にくくする
+    FocusScope.of(context).unfocus();
+
     final picked = await showDatePicker(
       context: context,
       initialDate: _visitDate ?? DateTime.now(),
@@ -227,6 +230,22 @@ class _BookPageState extends State<BookPage> {
 
     _visitDate = picked;
     _visitDateController.text = _formatDate(picked);
+
+    final ok = await _saveNowVerified(verifyGoshuin: false);
+    if (!ok) _snack('参拝日は表示できましたが、保存確認に失敗しました');
+
+    if (mounted) setState(() {});
+  }
+
+// ★カレンダーアイコンを押したら「今日」にする
+  Future<void> _setToday() async {
+    // フォーカスを外して、日付欄の帯（ハイライト）を出にくくする
+    FocusScope.of(context).unfocus();
+
+    final now = DateTime.now();
+
+    _visitDate = DateTime(now.year, now.month, now.day);
+    _visitDateController.text = _formatDate(_visitDate!);
 
     final ok = await _saveNowVerified(verifyGoshuin: false);
     if (!ok) _snack('参拝日は表示できましたが、保存確認に失敗しました');
@@ -694,15 +713,25 @@ class _BookPageState extends State<BookPage> {
                       padding: const EdgeInsets.all(16),
                       child: Column(
                         children: [
-                          TextField(
-                            controller: _visitDateController,
-                            readOnly: true,
-                            onTap: _pickDate,
-                            decoration: const InputDecoration(
-                              labelText: '参拝日',
-                              suffixIcon: Icon(Icons.calendar_today),
-                              contentPadding:
-                                  EdgeInsets.fromLTRB(12, 16, 48, 16),
+// 参拝日（欄タップ＝選択 / アイコン＝今日）
+                          InkWell(
+                            onTap: _pickDate, // 日付欄タップ → カレンダー表示
+                            child: AbsorbPointer(
+                              child: TextField(
+                                controller: _visitDateController,
+                                readOnly: true,
+                                showCursor: false,
+                                enableInteractiveSelection: false,
+                                decoration: InputDecoration(
+                                  labelText: '参拝日',
+                                  suffixIcon: IconButton(
+                                    icon: const Icon(Icons.calendar_today),
+                                    onPressed: _setToday, // ★アイコン → 今日にする
+                                  ),
+                                  contentPadding:
+                                      const EdgeInsets.fromLTRB(12, 16, 48, 16),
+                                ),
+                              ),
                             ),
                           ),
                           const SizedBox(height: 12),
