@@ -13,16 +13,35 @@ class CoverPage extends StatefulWidget {
 }
 
 class _CoverPageState extends State<CoverPage> {
-  // 春/夏（将来：秋冬追加しやすい）
+  // ===== 表紙（季節）=====
   final List<_SeasonCover> _covers = const [
     _SeasonCover(label: '春', assetPath: 'assets/images/cs.png', icon: '🌸'),
     _SeasonCover(label: '夏', assetPath: 'assets/images/cu.png', icon: '☀️'),
+    // 将来追加例：
+    // _SeasonCover(label: '秋', assetPath: 'assets/images/ca.png', icon: '🍁'),
+    // _SeasonCover(label: '冬', assetPath: 'assets/images/cw.png', icon: '❄️'),
   ];
 
   int _index = 0;
 
+  // ===== 下ボタンのタップ範囲調整 =====
+  // ・widthFactor：タップ範囲全体の幅（3分割の土台）
+  // ・tapShiftX：左右のずらし（-で左へ、+で右へ）
+  // ・bottomAreaHeight：下エリアの高さ
+  // ・bottomPadding：下エリアの余白
+  //
+  // いまの状況に合わせて “ここだけ” 調整すればOKです。
+  static const double _tapWidthFactor = 0.80;
+  static const double _tapShiftX = -0.08; // 左が内側 → もっと左なら -0.08 / 行き過ぎなら -0.04
+  static const double _bottomAreaHeight = 96;
+  static const EdgeInsets _bottomPadding = EdgeInsets.fromLTRB(24, 0, 24, 20);
+
   void _nextCover() {
     setState(() => _index = (_index + 1) % _covers.length);
+  }
+
+  void _setCover(int i) {
+    setState(() => _index = i);
   }
 
   @override
@@ -32,7 +51,7 @@ class _CoverPageState extends State<CoverPage> {
     return Scaffold(
       body: Stack(
         children: [
-          // ===== 表紙（100%）=====
+          // ===== 表紙（cs/cu を1枚だけ、100%表示）=====
           Positioned.fill(
             child: Image.asset(
               cover.assetPath,
@@ -40,23 +59,41 @@ class _CoverPageState extends State<CoverPage> {
             ),
           ),
 
-          // ===== 表紙切替（右上）=====
+          // ===== 切替UI（右上）=====
           Positioned(
             top: 0,
             right: 0,
             child: SafeArea(
               child: Padding(
-                padding: const EdgeInsets.all(8),
-                child: InkWell(
-                  onTap: _nextCover,
-                  borderRadius: BorderRadius.circular(999),
-                  child: _chip('${cover.icon} ${cover.label}'),
+                padding: const EdgeInsets.only(top: 8, right: 8),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    PopupMenuButton<int>(
+                      tooltip: '表紙を選ぶ',
+                      onSelected: _setCover,
+                      itemBuilder: (_) => List.generate(_covers.length, (i) {
+                        final c = _covers[i];
+                        return PopupMenuItem<int>(
+                          value: i,
+                          child: Text('${c.icon} ${c.label}'),
+                        );
+                      }),
+                      child: _chip('${cover.icon} ${cover.label}'),
+                    ),
+                    const SizedBox(width: 8),
+                    InkWell(
+                      onTap: _nextCover,
+                      borderRadius: BorderRadius.circular(999),
+                      child: _chip('切替'),
+                    ),
+                  ],
                 ),
               ),
             ),
           ),
 
-          // ===== 下ボタンエリア（見た目画像＋タップ範囲）=====
+          // ===== 下ボタン（見た目は cs/cu に含まれているので、ここはタップ範囲だけ）=====
           Positioned(
             left: 0,
             right: 0,
@@ -64,18 +101,17 @@ class _CoverPageState extends State<CoverPage> {
             child: SafeArea(
               top: false,
               child: Padding(
-                // 位置調整（必要なら微調整）
-                padding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
+                padding: _bottomPadding,
                 child: SizedBox(
-                  height: 96, // 必要なら微調整
+                  height: _bottomAreaHeight,
                   child: Stack(
                     children: [
+                      // 透明タップ範囲（3分割）
                       Positioned.fill(
                         child: Align(
-                          // ★ここで左右を微調整：マイナスで左へ、プラスで右へ
-                          alignment: const Alignment(-0.06, 0),
+                          alignment: const Alignment(_tapShiftX, 0),
                           child: FractionallySizedBox(
-                            widthFactor: 0.8,
+                            widthFactor: _tapWidthFactor,
                             child: Row(
                               children: [
                                 Expanded(
@@ -85,8 +121,9 @@ class _CoverPageState extends State<CoverPage> {
                                       Navigator.push(
                                         context,
                                         MaterialPageRoute(
-                                            builder: (_) =>
-                                                const TempleListPage()),
+                                          builder: (_) =>
+                                              const TempleListPage(),
+                                        ),
                                       );
                                     },
                                   ),
@@ -103,7 +140,9 @@ class _CoverPageState extends State<CoverPage> {
                                         ScaffoldMessenger.of(context)
                                             .showSnackBar(
                                           const SnackBar(
-                                              content: Text('まだ寺院の記録がありません。')),
+                                            content: Text(
+                                                'まだ寺院の記録がありません。先に寺院を追加してください。'),
+                                          ),
                                         );
                                         return;
                                       }
@@ -132,7 +171,8 @@ class _CoverPageState extends State<CoverPage> {
                                       Navigator.push(
                                         context,
                                         MaterialPageRoute(
-                                            builder: (_) => const AboutPage()),
+                                          builder: (_) => const AboutPage(),
+                                        ),
                                       );
                                     },
                                   ),
@@ -142,6 +182,8 @@ class _CoverPageState extends State<CoverPage> {
                           ),
                         ),
                       ),
+
+                      // ※必要ならここに “デバッグ枠” を入れられます（普段は不要）
                     ],
                   ),
                 ),
@@ -181,28 +223,6 @@ class _SeasonCover {
     required this.assetPath,
     required this.icon,
   });
-}
-
-// ===== 下ボタン（見た目：画像1枚）=====
-// ここにあなたのボタン画像ファイル名を設定してください
-class _BottomButtonsImage extends StatelessWidget {
-  final double widthFactor;
-  const _BottomButtonsImage({
-    required this.widthFactor,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: FractionallySizedBox(
-        widthFactor: widthFactor, // 0.86
-        child: Image.asset(
-          'assets/images/bottom_buttons.png', // ★あなたの画像名に合わせて変更
-          fit: BoxFit.contain,
-        ),
-      ),
-    );
-  }
 }
 
 // ===== 透明タップ範囲 =====
