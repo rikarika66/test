@@ -742,7 +742,7 @@ class _BookPageState extends State<BookPage> {
                               labelText: '寺院名',
                               hintText: '新しい寺院',
                               hintStyle: TextStyle(
-                                color: Colors.black12, // 薄いグレー
+                                color: Colors.grey.shade400, // 柔らかいグレー
                               ),
                             ),
                           ),
