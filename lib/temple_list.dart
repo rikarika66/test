@@ -357,7 +357,7 @@ class _TempleListPageState extends State<TempleListPage> {
             }
           },
         ),
-        title: Text('寺院一覧（${_sortLabel(_sortMode)}）'),
+        title: const Text('寺院一覧'),
         automaticallyImplyLeading: false,
         actions: [
           PopupMenuButton<TempleSortMode>(
