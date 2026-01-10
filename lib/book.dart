@@ -678,7 +678,7 @@ class _BookPageState extends State<BookPage> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Text(
-                            '御朱印（最大2つ）',
+                            '参拝アルバム（最大2つ）',
                             style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
@@ -738,7 +738,13 @@ class _BookPageState extends State<BookPage> {
                           TextField(
                             controller: _templeNameController,
                             onChanged: (_) => _saveNow(),
-                            decoration: const InputDecoration(labelText: '寺院名'),
+                            decoration: const InputDecoration(
+                              labelText: '寺院名',
+                              hintText: '新しい寺院',
+                              hintStyle: TextStyle(
+                                color: Colors.black38, // 薄いグレー
+                              ),
+                            ),
                           ),
                           const SizedBox(height: 12),
                           TextField(
