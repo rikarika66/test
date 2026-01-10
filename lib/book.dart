@@ -641,7 +641,14 @@ class _BookPageState extends State<BookPage> {
         title: Text(baseTitle),
         automaticallyImplyLeading: false,
         actions: [
-          // トップへ戻る（家アイコン）
+          // 共有（既存）
+          IconButton(
+            tooltip: '共有',
+            icon: const Icon(Icons.share),
+            onPressed: _share,
+          ),
+
+          // ★トップへ戻る（家アイコン）を一番右に
           IconButton(
             tooltip: 'トップへ',
             icon: const Icon(Icons.home),
@@ -651,13 +658,6 @@ class _BookPageState extends State<BookPage> {
                 (route) => false,
               );
             },
-          ),
-
-          // 共有（既存）
-          IconButton(
-            tooltip: '共有',
-            icon: const Icon(Icons.share),
-            onPressed: _share,
           ),
         ],
       ),
