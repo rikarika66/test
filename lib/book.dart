@@ -742,7 +742,7 @@ class _BookPageState extends State<BookPage> {
                               labelText: '寺院名',
                               hintText: '新しい寺院',
                               hintStyle: TextStyle(
-                                color: Colors.black38, // 薄いグレー
+                                color: Colors.black12, // 薄いグレー
                               ),
                             ),
                           ),
@@ -796,9 +796,9 @@ class _BookPageState extends State<BookPage> {
                       Row(
                         children: [
                           const Text(
-                            'アルバム',
+                            '参拝アルバム',
                             style: TextStyle(
-                              fontSize: 18,
+                              fontSize: 16,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
