@@ -678,7 +678,7 @@ class _BookPageState extends State<BookPage> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Text(
-                            '参拝アルバム（最大2つ）',
+                            '御朱印（最大2つ）',
                             style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
