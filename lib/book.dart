@@ -7,6 +7,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'temple_store.dart';
+import 'pages/cover.dart';
 
 class BookPage extends StatefulWidget {
   const BookPage({
@@ -640,11 +641,19 @@ class _BookPageState extends State<BookPage> {
         title: Text(baseTitle),
         automaticallyImplyLeading: false,
         actions: [
+          // トップへ戻る（家アイコン）
           IconButton(
-            tooltip: '一覧',
-            icon: const Icon(Icons.list),
-            onPressed: () => Navigator.pop(context),
+            tooltip: 'トップへ',
+            icon: const Icon(Icons.home),
+            onPressed: () {
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(builder: (_) => const CoverPage()),
+                (route) => false,
+              );
+            },
           ),
+
+          // 共有（既存）
           IconButton(
             tooltip: '共有',
             icon: const Icon(Icons.share),
