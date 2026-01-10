@@ -799,7 +799,6 @@ class _BookPageState extends State<BookPage> {
                             '参拝アルバム',
                             style: TextStyle(
                               fontSize: 16,
-                              fontWeight: FontWeight.bold,
                             ),
                           ),
                           if (_albumSelectionMode) ...[
