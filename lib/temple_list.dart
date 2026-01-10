@@ -3,6 +3,7 @@ import 'dart:ui'; // ImageFilter（ぼかし）用
 
 import 'package:flutter/material.dart';
 
+import 'pages/cover.dart';
 import 'temple_store.dart';
 import 'book.dart';
 
@@ -26,7 +27,7 @@ class _TempleListPageState extends State<TempleListPage> {
   // 長押しで🗑️を出す（表示中タイルID）
   String? _trashTempleId;
 
-// ★ 下帯（御朱印サムネ）のベース色：濃紺（藍）
+  // ★ 下帯（御朱印サムネ）のベース色：濃紺（藍）
   static const Color _bandBaseColor = Color(0xFF1E2A38);
 
   @override
@@ -346,17 +347,6 @@ class _TempleListPageState extends State<TempleListPage> {
 
     return Scaffold(
       appBar: AppBar(
-        leading: IconButton(
-          tooltip: '表紙へ',
-          icon: const Icon(Icons.home),
-          onPressed: () {
-            if (Navigator.of(context).canPop()) {
-              Navigator.of(context).pop();
-            } else {
-              Navigator.of(context).pushReplacementNamed('/');
-            }
-          },
-        ),
         title: const Text('寺院一覧'),
         automaticallyImplyLeading: false,
         actions: [
@@ -382,6 +372,16 @@ class _TempleListPageState extends State<TempleListPage> {
                 child: Text('寺院名：A→Z'),
               ),
             ],
+          ),
+          IconButton(
+            tooltip: 'トップへ',
+            icon: const Icon(Icons.home),
+            onPressed: () {
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(builder: (_) => const CoverPage()),
+                (route) => false,
+              );
+            },
           ),
         ],
       ),
