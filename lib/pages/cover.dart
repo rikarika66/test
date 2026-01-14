@@ -17,9 +17,8 @@ class _CoverPageState extends State<CoverPage> {
   final List<_SeasonCover> _covers = const [
     _SeasonCover(label: '春', assetPath: 'assets/images/cs.png', icon: '🌸'),
     _SeasonCover(label: '夏', assetPath: 'assets/images/cu.png', icon: '☀️'),
-    // 将来追加例：
-    // _SeasonCover(label: '秋', assetPath: 'assets/images/ca.png', icon: '🍁'),
-    // _SeasonCover(label: '冬', assetPath: 'assets/images/cw.png', icon: '❄️'),
+    _SeasonCover(label: '秋', assetPath: 'assets/images/ca.png', icon: '🍁'),
+    _SeasonCover(label: '冬', assetPath: 'assets/images/cw.png', icon: '❄️'),
   ];
 
   int _index = 0;
