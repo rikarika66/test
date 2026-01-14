@@ -13,6 +13,9 @@ class CoverPage extends StatefulWidget {
 }
 
 class _CoverPageState extends State<CoverPage> {
+  // ★ 最後に表示していた季節を保持（重要）
+  static int lastSeasonIndex = 0;
+
   // ===== 表紙（季節）=====
   final List<_SeasonCover> _covers = const [
     _SeasonCover(label: '春', assetPath: 'assets/images/cs.png', icon: '🌸'),
@@ -21,26 +24,33 @@ class _CoverPageState extends State<CoverPage> {
     _SeasonCover(label: '冬', assetPath: 'assets/images/cw.png', icon: '❄️'),
   ];
 
-  int _index = 0;
+  late int _index;
 
   // ===== 下ボタンのタップ範囲調整 =====
-  // ・widthFactor：タップ範囲全体の幅（3分割の土台）
-  // ・tapShiftX：左右のずらし（-で左へ、+で右へ）
-  // ・bottomAreaHeight：下エリアの高さ
-  // ・bottomPadding：下エリアの余白
-  //
-  // いまの状況に合わせて “ここだけ” 調整すればOKです。
   static const double _tapWidthFactor = 0.86;
-  static const double _tapShiftX = -0.12; // 左が内側 → もっと左なら -0.08 / 行き過ぎなら -0.04
+  static const double _tapShiftX = -0.12;
   static const double _bottomAreaHeight = 96;
   static const EdgeInsets _bottomPadding = EdgeInsets.fromLTRB(24, 0, 24, 20);
 
+  @override
+  void initState() {
+    super.initState();
+    // ★ 前回の季節を復元
+    _index = lastSeasonIndex.clamp(0, _covers.length - 1);
+  }
+
   void _nextCover() {
-    setState(() => _index = (_index + 1) % _covers.length);
+    setState(() {
+      _index = (_index + 1) % _covers.length;
+      lastSeasonIndex = _index; // ★保存
+    });
   }
 
   void _setCover(int i) {
-    setState(() => _index = i);
+    setState(() {
+      _index = i;
+      lastSeasonIndex = i; // ★保存
+    });
   }
 
   @override
@@ -50,7 +60,7 @@ class _CoverPageState extends State<CoverPage> {
     return Scaffold(
       body: Stack(
         children: [
-          // ===== 表紙（cs/cu を1枚だけ、100%表示）=====
+          // ===== 表紙（1枚だけ、100%表示）=====
           Positioned.fill(
             child: Image.asset(
               cover.assetPath,
@@ -92,7 +102,7 @@ class _CoverPageState extends State<CoverPage> {
             ),
           ),
 
-          // ===== 下ボタン（見た目は cs/cu に含まれているので、ここはタップ範囲だけ）=====
+          // ===== 下ボタン（タップ範囲のみ）=====
           Positioned(
             left: 0,
             right: 0,
@@ -105,7 +115,6 @@ class _CoverPageState extends State<CoverPage> {
                   height: _bottomAreaHeight,
                   child: Stack(
                     children: [
-                      // 透明タップ範囲（3分割）
                       Positioned.fill(
                         child: Align(
                           alignment: const Alignment(_tapShiftX, 0),
@@ -181,8 +190,6 @@ class _CoverPageState extends State<CoverPage> {
                           ),
                         ),
                       ),
-
-                      // ※必要ならここに “デバッグ枠” を入れられます（普段は不要）
                     ],
                   ),
                 ),
@@ -224,6 +231,7 @@ class _SeasonCover {
   });
 }
 
+// ===== 透明タップエリア =====
 class _TapArea extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
@@ -239,13 +247,10 @@ class _TapArea extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-
-        // ★グレーの当たり表示を完全に消す
         splashColor: Colors.transparent,
         highlightColor: Colors.transparent,
         hoverColor: Colors.transparent,
         focusColor: Colors.transparent,
-
         child: Semantics(
           button: true,
           label: label,
