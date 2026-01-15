@@ -199,7 +199,7 @@ class _CoverPageState extends State<CoverPage> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.25),
+        color: Colors.black.withOpacity(0.22),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
