@@ -453,12 +453,18 @@ class _BookPageState extends State<BookPage> {
                 enableFeedback: false,
                 onTap: () => Navigator.pop(context, 'camera'),
               ),
+              // ★ これを追加
+              ListTile(
+                leading: const Icon(Icons.qr_code_scanner),
+                title: const Text('QRコード'),
+                enableFeedback: false,
+                onTap: () => Navigator.pop(context, 'qr'),
+              ),
             ],
           ),
         ),
       ),
     );
-
     if (result == 'gallery') {
       await _setGoshuinFromGallery(slot);
     } else if (result == 'camera') {
