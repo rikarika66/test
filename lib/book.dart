@@ -1,13 +1,16 @@
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:http/http.dart' as http;
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'temple_store.dart';
 import 'pages/cover.dart';
+import 'pages/qr_scan.dart';
 
 class BookPage extends StatefulWidget {
   const BookPage({
@@ -345,6 +348,73 @@ class _BookPageState extends State<BookPage> {
     if (!ok) _snack('画像は表示できましたが、保存確認に失敗しました');
   }
 
+  Future<void> _setGoshuinFromQr(int slot) async {
+    // 1) スキャン画面へ
+    final code = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(builder: (_) => const QrScanPage()),
+    );
+
+    if (!mounted) return;
+    if (code == null || code.trim().isEmpty) return;
+
+    final trimmed = code.trim();
+
+    // 2) URLかチェック（画像URL運用）
+    Uri? uri;
+    try {
+      uri = Uri.parse(trimmed);
+    } catch (_) {
+      uri = null;
+    }
+
+    final isHttp =
+        uri != null && (uri.scheme == 'http' || uri.scheme == 'https');
+    if (!isHttp) {
+      _snack('QRの内容がURLではありませんでした');
+      return;
+    }
+
+    // 3) 画像をダウンロード → slotに保存
+    try {
+      final res = await http.get(uri!);
+      if (res.statusCode != 200) {
+        _snack('画像取得に失敗しました（${res.statusCode}）');
+        return;
+      }
+
+      final bytes = res.bodyBytes;
+      if (bytes.isEmpty) {
+        _snack('画像データが空でした');
+        return;
+      }
+
+      setState(() {
+        _setSlotBytes(slot, bytes);
+        // この変数が存在しないなら、この1行は削除OK
+        _goshuinTrashSlot = null;
+      });
+
+      final ok = await _saveNowVerified(verifyGoshuin: true);
+      if (!ok) {
+        _snack('画像は表示できましたが、保存確認に失敗しました');
+      } else {
+        _snack('QRから御朱印を取り込みました');
+      }
+    } catch (e) {
+      if (kIsWeb) {
+        _snack(
+            'このURLはブラウザ制限(CORS)で取得できない可能性があります。URLを開いて画像を保存し、「写真ライブラリ」から追加してください。');
+        try {
+          await launchUrl(uri!, mode: LaunchMode.externalApplication);
+        } catch (_) {}
+        return;
+      }
+      debugPrint('御朱印（QR）取得エラー: $e');
+      _snack('取得中にエラーが発生しました');
+    }
+  }
+
   void _openGoshuinViewer(int slot) {
     final bytes = _getSlot(slot);
     if (bytes.isEmpty) return;
@@ -393,6 +463,8 @@ class _BookPageState extends State<BookPage> {
       await _setGoshuinFromGallery(slot);
     } else if (result == 'camera') {
       await _setGoshuinFromCamera(slot);
+    } else if (result == 'qr') {
+      await _setGoshuinFromQr(slot);
     }
   }
 
