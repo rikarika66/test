@@ -90,12 +90,6 @@ class _CoverPageState extends State<CoverPage> {
                       }),
                       child: _chip('${cover.icon} ${cover.label}'),
                     ),
-                    const SizedBox(width: 8),
-                    InkWell(
-                      onTap: _nextCover,
-                      borderRadius: BorderRadius.circular(999),
-                      child: _chip('切替'),
-                    ),
                   ],
                 ),
               ),
