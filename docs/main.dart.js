@@ -95043,7 +95043,7 @@ P(a){var s,r,q,p,o=null,n=this.e
 n===$&&A.a()
 s=B.vx[n]
 n=A.Bt(0,new A.tV(A.aKM(o,o,new A.xQ(s.b,o,o)),o,o,B.kg,B.T,o))
-r=A.aC(89,B.m.C()>>>16&255,B.m.C()>>>8&255,B.m.C()&255)
+r=A.aC(64,B.m.C()>>>16&255,B.m.C()>>>8&255,B.m.C()&255)
 q=A.fn(999)
 p=t.p
 return A.Ce(o,o,A.hP(B.bB,A.c([n,A.ki(o,A.qD(!0,new A.bx(B.LZ,A.fB(A.c([A.aKp(A.fs(o,A.d3(s.c+" "+s.a,o,o,o,B.a7R,o,o,o),B.y,o,new A.dt(r,o,o,q,o,o,B.aT),o,o,o,B.p6,o,o,o),o,o,new A.at4(this),this.gaiN(),"\u8868\u7d19\u3092\u9078\u3076",t.S)],p),B.aa,B.R,B.bs,0),o),B.aw,!0),o,o,o,0,0,o),A.ki(0,A.qD(!0,new A.bx(B.M6,A.dy(A.hP(B.bB,A.c([A.Bt(0,new A.e5(B.HN,o,o,new A.NG(0.86,A.fB(A.c([A.ie(new A.wS("\u5bfa\u9662\u30ea\u30b9\u30c8",new A.at5(a),o),1),A.ie(new A.wS("\u304d\u308d\u304f",new A.at6(a),o),1),A.ie(new A.wS("\u3053\u306e\u30a2\u30d7\u30ea\u306b\u3064\u3044\u3066",new A.at7(a),o),1)],p),B.aa,B.R,B.al,0),o),o))],p),B.I,B.bx),96,o),o),B.aw,!1),o,o,0,0,o,o)],p),B.I,B.bx),o)}}
