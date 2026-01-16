@@ -80,7 +80,9 @@ class _BookPageState extends State<BookPage> {
     final entry = loaded ?? TempleStore.newEntry();
     _entry = entry;
 
-    _templeNameController.text = entry.templeName;
+    final name = entry.templeName.trim();
+// 以前の既定文言が残っていても、表示は空にしてスッキリさせる
+    _templeNameController.text = (name == '新しい寺院') ? '' : name;
     _visitDateController.text = entry.visitDateText;
     _memoController.text = entry.memo;
 
