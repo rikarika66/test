@@ -167,7 +167,7 @@ class TempleStore {
     final dateText = '${now.year}年${now.month}月${now.day}日';
     return TempleEntry(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
-      templeName: '新しい寺院',
+      templeName: '',
       visitDateText: dateText,
       address: '',
       sect: '',
