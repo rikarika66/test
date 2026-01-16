@@ -773,6 +773,11 @@ class _BookPageState extends State<BookPage> {
         ? '御朱印帳'
         : '御朱印帳（${_templeNameController.text}）';
 
+// ★寺院プロフィールカードのTextFieldの縦位置を統一するための共通Decoration
+    final commonInputDecoration = const InputDecoration(
+      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+    );
+
     return Scaffold(
       appBar: AppBar(
         title: Text(baseTitle),
@@ -868,63 +873,56 @@ class _BookPageState extends State<BookPage> {
                                 readOnly: true,
                                 showCursor: false,
                                 enableInteractiveSelection: false,
-                                decoration: InputDecoration(
+                                decoration: commonInputDecoration.copyWith(
                                   labelText: '参拝日',
                                   suffixIcon: IconButton(
                                     icon: const Icon(Icons.calendar_today),
                                     onPressed: _setToday, // ★アイコン → 今日にする
                                   ),
-                                  contentPadding:
-                                      const EdgeInsets.fromLTRB(12, 16, 48, 16),
                                 ),
                               ),
                             ),
                           ),
                           const SizedBox(height: 12),
+
                           TextField(
                             controller: _templeNameController,
                             onChanged: (_) => _saveNow(),
-                            decoration: const InputDecoration(
+                            decoration: commonInputDecoration.copyWith(
                               labelText: '寺院名',
                               hintText: '新しい寺院',
-                              hintStyle: TextStyle(
-                                color: Colors.black12, // 柔らかいグレー
-                              ),
+                              hintStyle: const TextStyle(color: Colors.black12),
                             ),
                           ),
                           const SizedBox(height: 12),
+
                           TextField(
                             controller: _addressController,
                             onChanged: (_) => _saveNow(),
-                            decoration: InputDecoration(
+                            decoration: commonInputDecoration.copyWith(
                               labelText: '所在地',
                               suffixIcon: IconButton(
                                 icon: const Icon(Icons.location_on),
                                 onPressed: _openInMaps,
                               ),
-                              // ★他の項目と縦位置を揃えるため、paddingを統一
-                              contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 12, vertical: 16),
                             ),
                           ),
                           const SizedBox(height: 12),
+
                           TextField(
                             controller: _sectController,
                             onChanged: (_) => _saveNow(),
-                            decoration: const InputDecoration(
+                            decoration: commonInputDecoration.copyWith(
                               labelText: '宗派',
-                              contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 12, vertical: 16),
                             ),
                           ),
                           const SizedBox(height: 12),
+
                           TextField(
                             controller: _honzonController,
                             onChanged: (_) => _saveNow(),
-                            decoration: const InputDecoration(
+                            decoration: commonInputDecoration.copyWith(
                               labelText: '御本尊',
-                              contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 12, vertical: 16),
                             ),
                           ),
 
