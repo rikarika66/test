@@ -890,8 +890,6 @@ class _BookPageState extends State<BookPage> {
                             onChanged: (_) => _saveNow(),
                             decoration: commonInputDecoration.copyWith(
                               labelText: '寺院名',
-                              hintText: '新しい寺院',
-                              hintStyle: const TextStyle(color: Colors.black12),
                             ),
                           ),
                           const SizedBox(height: 12),
