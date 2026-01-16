@@ -893,37 +893,46 @@ class _BookPageState extends State<BookPage> {
                             ),
                           ),
                           const SizedBox(height: 12),
-TextField(
-  controller: _addressController,
-  onChanged: (_) => _saveNow(),
-  decoration: InputDecoration(
-    labelText: '所在地',
-    suffixIcon: IconButton(
-      icon: const Icon(Icons.location_on),
-      onPressed: _openInMaps,
-    ),
-    // ★他の項目と縦位置を揃えるため、paddingを統一
-    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
-  ),
-),
-const SizedBox(height: 12),
-TextField(
-  controller: _sectController,
-  onChanged: (_) => _saveNow(),
-  decoration: const InputDecoration(
-    labelText: '宗派',
-    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 16),
-  ),
-),
-const SizedBox(height: 12),
-TextField(
-  controller: _honzonController,
-  onChanged: (_) => _saveNow(),
-  decoration: const InputDecoration(
-    labelText: '御本尊',
-    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 16),
-  ),
-),
+                          TextField(
+                            controller: _addressController,
+                            onChanged: (_) => _saveNow(),
+                            decoration: InputDecoration(
+                              labelText: '所在地',
+                              suffixIcon: IconButton(
+                                icon: const Icon(Icons.location_on),
+                                onPressed: _openInMaps,
+                              ),
+                              // ★他の項目と縦位置を揃えるため、paddingを統一
+                              contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 16),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: _sectController,
+                            onChanged: (_) => _saveNow(),
+                            decoration: const InputDecoration(
+                              labelText: '宗派',
+                              contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 16),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: _honzonController,
+                            onChanged: (_) => _saveNow(),
+                            decoration: const InputDecoration(
+                              labelText: '御本尊',
+                              contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 16),
+                            ),
+                          ),
+
+// ★寺院プロフィールCardを閉じる（ここが抜けていた）
+                        ],
+                      ),
+                    ),
+                  ),
 
                   const SizedBox(height: 24),
 
