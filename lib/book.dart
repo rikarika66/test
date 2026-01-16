@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -349,7 +350,6 @@ class _BookPageState extends State<BookPage> {
   }
 
   Future<void> _setGoshuinFromQr(int slot) async {
-    // 1) スキャン画面へ
     final code = await Navigator.push<String>(
       context,
       MaterialPageRoute(builder: (_) => const QrScanPage()),
@@ -358,60 +358,119 @@ class _BookPageState extends State<BookPage> {
     if (!mounted) return;
     if (code == null || code.trim().isEmpty) return;
 
-    final trimmed = code.trim();
-
-    // 2) URLかチェック（画像URL運用）
+    final text = code.trim();
     Uri? uri;
     try {
-      uri = Uri.parse(trimmed);
+      uri = Uri.parse(text);
     } catch (_) {
       uri = null;
     }
 
-    final isHttp =
-        uri != null && (uri.scheme == 'http' || uri.scheme == 'https');
-    if (!isHttp) {
+    if (uri == null || !(uri.scheme == 'http' || uri.scheme == 'https')) {
       _snack('QRの内容がURLではありませんでした');
       return;
     }
 
-    // 3) 画像をダウンロード → slotに保存
+    final path = uri.path.toLowerCase();
+    final looksJson = path.endsWith('.json');
+    final looksImage = path.endsWith('.png') ||
+        path.endsWith('.jpg') ||
+        path.endsWith('.jpeg') ||
+        path.endsWith('.webp');
+
     try {
-      final res = await http.get(uri!);
-      if (res.statusCode != 200) {
-        _snack('画像取得に失敗しました（${res.statusCode}）');
-        return;
+      if (looksJson || !looksImage) {
+        final res = await http.get(uri);
+        if (res.statusCode != 200) {
+          _snack('情報取得に失敗しました（${res.statusCode}）');
+          return;
+        }
+
+        final body = utf8.decode(res.bodyBytes, allowMalformed: true).trim();
+        if (body.startsWith('{')) {
+          final obj = jsonDecode(body) as Map<String, dynamic>;
+
+          _applyTempleInfoFromJson(obj);
+
+          final imageUrl = _extractImageUrl(obj);
+          if (imageUrl == null || imageUrl.isEmpty) {
+            _snack('JSONに画像URLが見つかりませんでした');
+            return;
+          }
+
+          await _downloadAndSetImage(slot, Uri.parse(imageUrl));
+          return;
+        }
       }
 
-      final bytes = res.bodyBytes;
-      if (bytes.isEmpty) {
-        _snack('画像データが空でした');
-        return;
-      }
-
-      setState(() {
-        _setSlotBytes(slot, bytes);
-        // この変数が存在しないなら、この1行は削除OK
-        _goshuinTrashSlot = null;
-      });
-
-      final ok = await _saveNowVerified(verifyGoshuin: true);
-      if (!ok) {
-        _snack('画像は表示できましたが、保存確認に失敗しました');
-      } else {
-        _snack('QRから御朱印を取り込みました');
-      }
+      await _downloadAndSetImage(slot, uri);
     } catch (e) {
       if (kIsWeb) {
         _snack(
             'このURLはブラウザ制限(CORS)で取得できない可能性があります。URLを開いて画像を保存し、「写真ライブラリ」から追加してください。');
         try {
-          await launchUrl(uri!, mode: LaunchMode.externalApplication);
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
         } catch (_) {}
         return;
       }
       debugPrint('御朱印（QR）取得エラー: $e');
       _snack('取得中にエラーが発生しました');
+    }
+  }
+
+  String? _extractImageUrl(Map<String, dynamic> obj) {
+    final goshuin = obj['goshuin'];
+    if (goshuin is Map<String, dynamic>) {
+      final u = goshuin['imageUrl'];
+      if (u is String && u.trim().isNotEmpty) return u.trim();
+    }
+    final u2 = obj['imageUrl'];
+    if (u2 is String && u2.trim().isNotEmpty) return u2.trim();
+    return null;
+  }
+
+  void _applyTempleInfoFromJson(Map<String, dynamic> obj) {
+    final temple = obj['temple'];
+    if (temple is Map<String, dynamic>) {
+      if (temple['name'] is String) {
+        _templeNameController.text = temple['name'];
+      }
+      if (temple['address'] is String) {
+        _addressController.text = temple['address'];
+      }
+      if (temple['sect'] is String) {
+        _sectController.text = temple['sect'];
+      }
+      if (temple['honzon'] is String) {
+        _honzonController.text = temple['honzon'];
+      }
+    }
+    setState(() {});
+  }
+
+  Future<void> _downloadAndSetImage(int slot, Uri uri) async {
+    final res = await http.get(uri);
+    if (res.statusCode != 200) {
+      _snack('画像取得に失敗しました（${res.statusCode}）');
+      return;
+    }
+
+    final bytes = res.bodyBytes;
+    if (bytes.isEmpty) {
+      _snack('画像データが空でした');
+      return;
+    }
+
+    setState(() {
+      _setSlotBytes(slot, bytes);
+      _goshuinTrashSlot = null;
+    });
+
+    final ok = await _saveNowVerified(verifyGoshuin: true);
+    if (!ok) {
+      _snack('画像は表示できましたが、保存確認に失敗しました');
+    } else {
+      _snack('QRから御朱印を取り込みました');
     }
   }
 
