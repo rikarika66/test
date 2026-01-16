@@ -1,0 +1,14 @@
+{
+  "type": "goshuin_pack",
+  "version": 1,
+  "temple": {
+    "name": "正宗寺",
+    "address": "愛媛県松山市末広町16-3",
+    "sect": "臨済宗妙心寺派",
+    "honzon": "釈迦如来"
+  },
+  "goshuin": {
+    "imageUrl": "https://rikarika66.github.io/test/qr_test/hutuuji-gosyu.png",
+    "title": "通常御朱印"
+  }
+}
