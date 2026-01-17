@@ -38,6 +38,8 @@ class _BookPageState extends State<BookPage> {
   final _sectController = TextEditingController();
   final _honzonController = TextEditingController();
 
+  final _memoFocusNode = FocusNode();
+  final _scrollController = ScrollController();
   TempleEntry? _entry;
 
   // アルバム
@@ -67,6 +69,11 @@ class _BookPageState extends State<BookPage> {
     _addressController.dispose();
     _sectController.dispose();
     _honzonController.dispose();
+
+    // ★QR取込後の誘導用
+    _memoFocusNode.dispose();
+    _scrollController.dispose();
+
     super.dispose();
   }
 
@@ -401,11 +408,13 @@ class _BookPageState extends State<BookPage> {
           }
 
           await _downloadAndSetImage(slot, Uri.parse(imageUrl));
+          await _afterQrImported();
           return;
         }
       }
 
       await _downloadAndSetImage(slot, uri);
+      await _afterQrImported();
     } catch (e) {
       if (kIsWeb) {
         _snack(
@@ -418,6 +427,34 @@ class _BookPageState extends State<BookPage> {
       debugPrint('御朱印（QR）取得エラー: $e');
       _snack('取得中にエラーが発生しました');
     }
+  }
+
+  Future<void> _afterQrImported() async {
+    if (!mounted) return;
+
+    // UIが描画されるのを少し待つ
+    await Future.delayed(const Duration(milliseconds: 80));
+    if (!mounted) return;
+
+    final visitEmpty = _visitDateController.text.trim().isEmpty;
+
+    if (visitEmpty) {
+      // 参拝日が空ならカレンダーを開く
+      _pickDate();
+      return;
+    }
+
+    // 参拝日が入ってるならメモへ誘導
+    try {
+      await _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 350),
+        curve: Curves.easeOut,
+      );
+    } catch (_) {}
+
+    if (!mounted) return;
+    FocusScope.of(context).requestFocus(_memoFocusNode);
   }
 
   String? _extractImageUrl(Map<String, dynamic> obj) {
@@ -819,6 +856,7 @@ class _BookPageState extends State<BookPage> {
               return false;
             },
             child: SingleChildScrollView(
+              controller: _scrollController,
               padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -937,6 +975,7 @@ class _BookPageState extends State<BookPage> {
                   // メモ
                   TextField(
                     controller: _memoController,
+                    focusNode: _memoFocusNode, // ★QR取込後にここへフォーカス
                     maxLines: 4,
                     onChanged: (_) => _saveNow(),
                     decoration: const InputDecoration(labelText: '参拝メモ'),
