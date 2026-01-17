@@ -4,6 +4,7 @@ import 'dart:ui'; // ImageFilter（ぼかし）用
 import 'package:flutter/material.dart';
 
 import 'pages/cover.dart';
+import 'pages/qr_scan.dart'; // ★追加：QRスキャン画面
 import 'temple_store.dart';
 import 'book.dart';
 
@@ -124,6 +125,47 @@ class _TempleListPageState extends State<TempleListPage> {
         templeId: entry.id,
         templeIds: ids,
         currentIndex: idx,
+      ),
+    );
+
+    await _reload();
+  }
+
+  /// ★QRで追加（QR→新規カード作成→BookPageを開く→自動取込）
+  Future<void> _addFromQr() async {
+    // まずQRスキャン
+    final code = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(builder: (_) => const QrScanPage()),
+    );
+
+    if (!mounted) return;
+    if (code == null || code.trim().isEmpty) return;
+
+    final qrUrl = code.trim();
+
+    // 新しい寺院IDを発行
+    final newId = DateTime.now().millisecondsSinceEpoch.toString();
+
+    // 先に“空カード”を一覧に追加して保存（Book側で開いた瞬間に保存される実装でもOKだが二重に安全）
+    final entry = TempleStore.newEntryWithId(newId);
+
+    setState(() {
+      _entries.insert(0, entry);
+    });
+
+    await TempleStore.upsert(entry);
+    if (!mounted) return;
+
+    final ids = _currentTempleIds();
+    final idx = ids.indexOf(entry.id);
+
+    await _pushSlide(
+      BookPage(
+        templeId: entry.id,
+        templeIds: ids,
+        currentIndex: idx,
+        initialQrUrl: qrUrl, // ★BookPageが起動時に自動でQR取込する
       ),
     );
 
@@ -385,11 +427,28 @@ class _TempleListPageState extends State<TempleListPage> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _addNew,
-        icon: const Icon(Icons.add),
-        label: const Text('寺院を追加'),
+
+      // ★2段FAB：上が「QRで追加」、下が既存の「寺院を追加」
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          FloatingActionButton.extended(
+            heroTag: 'fab_qr',
+            onPressed: _addFromQr,
+            icon: const Icon(Icons.qr_code_scanner),
+            label: const Text('QRで追加'),
+          ),
+          const SizedBox(height: 10),
+          FloatingActionButton.extended(
+            heroTag: 'fab_add',
+            onPressed: _addNew,
+            icon: const Icon(Icons.add),
+            label: const Text('寺院を追加'),
+          ),
+        ],
       ),
+
       body: _entries.isEmpty
           ? const Center(
               child: Text('まだ寺院ページがありません。\n右下の「寺院を追加」から作成できます。'),

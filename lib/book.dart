@@ -19,11 +19,14 @@ class BookPage extends StatefulWidget {
     required this.templeId,
     this.templeIds,
     this.currentIndex,
+    this.initialQrUrl, // ★追加：寺院一覧の「QRで追加」から渡されるURL
   });
 
   final String templeId;
   final List<String>? templeIds;
   final int? currentIndex;
+
+  final String? initialQrUrl; // ★追加
 
   @override
   State<BookPage> createState() => _BookPageState();
@@ -59,6 +62,18 @@ class _BookPageState extends State<BookPage> {
   void initState() {
     super.initState();
     _loadEntry();
+
+    // ★寺院一覧の「QRで追加」から来た場合、起動直後に自動で取込する
+    final url = widget.initialQrUrl?.trim();
+    if (url != null && url.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        // 御朱印①に入れる（slot=0）
+        await _setGoshuinFromQrUrl(0, url);
+
+        // 取込後の誘導（昨日作ったやつ）
+        await _afterQrImported();
+      });
+    }
   }
 
   @override
@@ -372,10 +387,14 @@ class _BookPageState extends State<BookPage> {
     if (!mounted) return;
     if (code == null || code.trim().isEmpty) return;
 
-    final text = code.trim();
+    await _setGoshuinFromQrUrl(slot, code.trim());
+    await _afterQrImported();
+  }
+
+  Future<void> _setGoshuinFromQrUrl(int slot, String text) async {
     Uri? uri;
     try {
-      uri = Uri.parse(text);
+      uri = Uri.parse(text.trim());
     } catch (_) {
       uri = null;
     }
@@ -413,13 +432,12 @@ class _BookPageState extends State<BookPage> {
           }
 
           await _downloadAndSetImage(slot, Uri.parse(imageUrl));
-          await _afterQrImported();
-          return;
+          return; // ★ここでは_afterQrImportedは呼ばない（呼び元で統一）
         }
       }
 
       await _downloadAndSetImage(slot, uri);
-      await _afterQrImported();
+      return; // ★ここでも呼ばない
     } catch (e) {
       if (kIsWeb) {
         _snack(
