@@ -84,12 +84,17 @@ class _BookPageState extends State<BookPage> {
 
   Future<void> _loadEntry() async {
     final loaded = await TempleStore.loadById(widget.templeId);
-    final entry = loaded ?? TempleStore.newEntry();
+
+    // ★templeIdで開かれたなら、同じIDの新規エントリを作る（IDブレ防止）
+    final entry = loaded ?? TempleStore.newEntryWithId(widget.templeId);
     _entry = entry;
 
-    final name = entry.templeName.trim();
-// 以前の既定文言が残っていても、表示は空にしてスッキリさせる
-    _templeNameController.text = (name == '新しい寺院') ? '' : name;
+    // ★新規だった場合は、開いた時点で一覧に存在させる（「作ったのに消えた」を防ぐ）
+    if (loaded == null) {
+      await TempleStore.upsert(entry);
+    }
+
+    _templeNameController.text = entry.templeName;
     _visitDateController.text = entry.visitDateText;
     _memoController.text = entry.memo;
 

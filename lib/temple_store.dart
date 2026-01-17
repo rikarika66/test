@@ -42,10 +42,7 @@ class TempleEntry {
         'honzon': honzon,
         'memo': memo,
         'albumImages': albumImages.map((e) => base64Encode(e)).toList(),
-
-        // ★追加：複数
         'goshuinImages': goshuinImages.map((e) => base64Encode(e)).toList(),
-
         'updatedAtMillis': updatedAtMillis,
       };
 
@@ -88,7 +85,7 @@ class TempleEntry {
 
     return TempleEntry(
       id: (json['id'] as String?) ?? _genId(),
-      templeName: (json['templeName'] as String?) ?? '寺院',
+      templeName: (json['templeName'] as String?) ?? '',
       visitDateText: (json['visitDateText'] as String?) ?? '',
       address: (json['address'] as String?) ?? '',
       sect: (json['sect'] as String?) ?? '',
@@ -162,19 +159,26 @@ class TempleStore {
     await saveAll(all);
   }
 
+  /// 新規作成（ID自動生成）
   static TempleEntry newEntry() {
+    return newEntryWithId(DateTime.now().millisecondsSinceEpoch.toString());
+  }
+
+  /// ★新規作成（ID指定）
+  /// BookPage が templeId を持って開かれるケースでも、IDがブレないようにする
+  static TempleEntry newEntryWithId(String id) {
     final now = DateTime.now();
     final dateText = '${now.year}年${now.month}月${now.day}日';
     return TempleEntry(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      id: id,
       templeName: '',
-      visitDateText: dateText,
+      visitDateText: dateText, // 初期値＝今日（現状維持）
       address: '',
       sect: '',
       honzon: '',
       memo: '',
       albumImages: [],
-      goshuinImages: [], // ★追加
+      goshuinImages: [],
       updatedAtMillis: DateTime.now().millisecondsSinceEpoch,
     );
   }
