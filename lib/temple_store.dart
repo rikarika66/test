@@ -124,10 +124,19 @@ class TempleStore {
     }
   }
 
-  static Future<void> saveAll(List<TempleEntry> entries) async {
+  static Future<bool> saveAll(List<TempleEntry> entries) async {
     final prefs = await SharedPreferences.getInstance();
     final jsonList = entries.map((e) => e.toJson()).toList();
-    await prefs.setString(_listKey, jsonEncode(jsonList));
+    final payload = jsonEncode(jsonList);
+
+    try {
+      // setString は成功すると true を返す
+      final ok = await prefs.setString(_listKey, payload);
+      return ok;
+    } catch (_) {
+      // 容量超過などで例外になることがある
+      return false;
+    }
   }
 
   static Future<TempleEntry?> loadById(String id) async {
@@ -139,7 +148,7 @@ class TempleStore {
     }
   }
 
-  static Future<void> upsert(TempleEntry entry) async {
+  static Future<bool> upsert(TempleEntry entry) async {
     final all = await loadAll();
     final idx = all.indexWhere((e) => e.id == entry.id);
 
@@ -150,7 +159,11 @@ class TempleStore {
     } else {
       all.insert(0, entry);
     }
-    await saveAll(all);
+
+    final ok = await saveAll(all);
+
+    // 失敗したら呼び出し側で通知したいので bool を返す
+    return ok;
   }
 
   static Future<void> deleteById(String id) async {

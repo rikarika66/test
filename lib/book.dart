@@ -12,6 +12,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'temple_store.dart';
 import 'pages/cover.dart';
 import 'pages/qr_scan.dart';
+import 'package:image/image.dart' as img;
 
 class BookPage extends StatefulWidget {
   const BookPage({
@@ -57,6 +58,33 @@ class _BookPageState extends State<BookPage> {
   DateTime? _visitDate;
 
   final _picker = ImagePicker();
+
+  // ================================
+  // 保存前に画像を軽量化する（御朱印用）
+  // ================================
+  Uint8List _compressForStorage(
+    Uint8List src, {
+    int maxWidth = 1400,
+    int quality = 82,
+  }) {
+    // すでに軽ければ何もしない
+    if (src.lengthInBytes < 250 * 1024) return src;
+
+    try {
+      final decoded = img.decodeImage(src);
+      if (decoded == null) return src;
+
+      final resized = (decoded.width > maxWidth)
+          ? img.copyResize(decoded, width: maxWidth)
+          : decoded;
+
+      final jpg = img.encodeJpg(resized, quality: quality);
+      return Uint8List.fromList(jpg);
+    } catch (_) {
+      // 失敗したら元のまま返す（安全側）
+      return src;
+    }
+  }
 
   @override
   void initState() {
@@ -134,6 +162,19 @@ class _BookPageState extends State<BookPage> {
     final e = _entry;
     if (e == null) return;
 
+    // 失敗したときに戻せるように、直前のスナップショットを持つ
+    final prevTempleName = e.templeName;
+    final prevVisitDateText = e.visitDateText;
+    final prevMemo = e.memo;
+
+    final prevAddress = e.address;
+    final prevSect = e.sect;
+    final prevHonzon = e.honzon;
+
+    final prevAlbumImages = List<Uint8List>.from(e.albumImages);
+    final prevGoshuinImages = List<Uint8List>.from(e.goshuinImages);
+
+    // 反映（テキスト）
     e.templeName = _templeNameController.text;
     e.visitDateText = _visitDateController.text;
     e.memo = _memoController.text;
@@ -142,10 +183,37 @@ class _BookPageState extends State<BookPage> {
     e.sect = _sectController.text;
     e.honzon = _honzonController.text;
 
+    // アルバムはそのまま（必要なら後で圧縮対応できます）
     e.albumImages = List<Uint8List>.from(_albumImages);
-    e.goshuinImages = _goshuinImages.take(2).toList();
 
-    await TempleStore.upsert(e);
+    // ★御朱印は保存前に軽量化（最大2枚）
+    final goshuin = _goshuinImages.take(2).map((b) {
+      if (b.isEmpty) return b;
+      return _compressForStorage(b);
+    }).toList();
+
+    e.goshuinImages = goshuin;
+
+    final ok = await TempleStore.upsert(e);
+
+    if (!ok) {
+      // 保存に失敗した（ほぼ容量・ストレージ制限）
+      // 状態を戻す（次の保存で壊れたデータが上書きされるのを防ぐ）
+      e.templeName = prevTempleName;
+      e.visitDateText = prevVisitDateText;
+      e.memo = prevMemo;
+
+      e.address = prevAddress;
+      e.sect = prevSect;
+      e.honzon = prevHonzon;
+
+      e.albumImages = prevAlbumImages;
+      e.goshuinImages = prevGoshuinImages;
+
+      if (mounted) {
+        _snack('保存できませんでした（容量制限の可能性）。画像を減らすか軽い画像で試してください');
+      }
+    }
   }
 
   /// 保存→再読み込みで検証（誤SnackBar対策）
