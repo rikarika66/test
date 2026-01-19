@@ -183,15 +183,22 @@ class _BookPageState extends State<BookPage> {
     e.sect = _sectController.text;
     e.honzon = _honzonController.text;
 
-    // アルバムはそのまま（必要なら後で圧縮対応できます）
-    e.albumImages = List<Uint8List>.from(_albumImages);
+    // ★アルバムも保存前に軽量化（ここが今回の本命）
+    final album = _albumImages.map((b) {
+      if (b.isEmpty) return b;
+      return _compressForStorage(
+        b,
+        maxWidth: 1600, // アルバムは少し大きめでもOK
+        quality: 80, // 少し軽め
+      );
+    }).toList();
+    e.albumImages = album;
 
     // ★御朱印は保存前に軽量化（最大2枚）
     final goshuin = _goshuinImages.take(2).map((b) {
       if (b.isEmpty) return b;
       return _compressForStorage(b);
     }).toList();
-
     e.goshuinImages = goshuin;
 
     final ok = await TempleStore.upsert(e);
