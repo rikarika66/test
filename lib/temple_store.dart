@@ -1,8 +1,10 @@
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'image_storage.dart';
+
+/// 寺院1件分のデータ（★画像はパスで保持）
 class TempleEntry {
   TempleEntry({
     required this.id,
@@ -12,8 +14,8 @@ class TempleEntry {
     required this.sect,
     required this.honzon,
     required this.memo,
-    required this.albumImages,
-    required this.goshuinImages, // ★御朱印（最大2枚）
+    required this.albumImagePaths,
+    required this.goshuinImagePaths, // ★最大2枚
     required this.updatedAtMillis,
   });
 
@@ -25,11 +27,11 @@ class TempleEntry {
   String honzon;
   String memo;
 
-  /// アルバム
-  List<Uint8List> albumImages;
+  /// 📷 アルバム画像（ファイルパス）
+  List<String> albumImagePaths;
 
-  /// ★御朱印（最大2枚運用）
-  List<Uint8List> goshuinImages;
+  /// 🖼 御朱印画像（ファイルパス・最大2枚）
+  List<String> goshuinImagePaths;
 
   int updatedAtMillis;
 
@@ -41,47 +43,22 @@ class TempleEntry {
         'sect': sect,
         'honzon': honzon,
         'memo': memo,
-        'albumImages': albumImages.map((e) => base64Encode(e)).toList(),
-        'goshuinImages': goshuinImages.map((e) => base64Encode(e)).toList(),
+        'albumImagePaths': albumImagePaths,
+        'goshuinImagePaths': goshuinImagePaths,
         'updatedAtMillis': updatedAtMillis,
       };
 
   static TempleEntry fromJson(Map<String, dynamic> json) {
-    final album = (json['albumImages'] as List<dynamic>? ?? [])
+    final albumPaths = (json['albumImagePaths'] as List<dynamic>? ?? [])
         .whereType<String>()
-        .map((s) {
-          try {
-            return base64Decode(s);
-          } catch (_) {
-            return Uint8List(0);
-          }
-        })
-        .where((b) => b.isNotEmpty)
+        .where((p) => p.trim().isNotEmpty)
         .toList();
 
-    // ★新形式：goshuinImages
-    final gList = (json['goshuinImages'] as List<dynamic>? ?? [])
+    final goshuinPaths = (json['goshuinImagePaths'] as List<dynamic>? ?? [])
         .whereType<String>()
-        .map((s) {
-          try {
-            return base64Decode(s);
-          } catch (_) {
-            return Uint8List(0);
-          }
-        })
-        .where((b) => b.isNotEmpty)
+        .where((p) => p.trim().isNotEmpty)
+        .take(2)
         .toList();
-
-    // ★旧形式：goshuinImage（単体）にも後方互換で対応
-    final old = json['goshuinImage'];
-    if (gList.isEmpty && old is String && old.isNotEmpty) {
-      try {
-        gList.add(base64Decode(old));
-      } catch (_) {}
-    }
-
-    // ★運用：最大2枚に制限
-    final normalized = gList.take(2).toList();
 
     return TempleEntry(
       id: (json['id'] as String?) ?? _genId(),
@@ -91,8 +68,8 @@ class TempleEntry {
       sect: (json['sect'] as String?) ?? '',
       honzon: (json['honzon'] as String?) ?? '',
       memo: (json['memo'] as String?) ?? '',
-      albumImages: album,
-      goshuinImages: normalized,
+      albumImagePaths: albumPaths,
+      goshuinImagePaths: goshuinPaths,
       updatedAtMillis: (json['updatedAtMillis'] as int?) ??
           DateTime.now().millisecondsSinceEpoch,
     );
@@ -112,11 +89,13 @@ class TempleStore {
     try {
       final decoded = jsonDecode(raw);
       if (decoded is! List) return [];
+
       final list = decoded
+          .whereType<dynamic>()
           .map((e) => TempleEntry.fromJson(e as Map<String, dynamic>))
           .toList();
 
-      // 新しい順（※並び替えは一覧側でも可）
+      // 新しい順
       list.sort((a, b) => b.updatedAtMillis.compareTo(a.updatedAtMillis));
       return list;
     } catch (_) {
@@ -130,11 +109,9 @@ class TempleStore {
     final payload = jsonEncode(jsonList);
 
     try {
-      // setString は成功すると true を返す
       final ok = await prefs.setString(_listKey, payload);
       return ok;
     } catch (_) {
-      // 容量超過などで例外になることがある
       return false;
     }
   }
@@ -160,22 +137,21 @@ class TempleStore {
       all.insert(0, entry);
     }
 
-    final ok = await saveAll(all);
-
-    // 失敗したら呼び出し側で通知したいので bool を返す
-    return ok;
+    return await saveAll(all);
   }
 
+  /// ★寺院データ削除（画像ファイルも一緒に削除）
   static Future<void> deleteById(String id) async {
     final all = await loadAll();
     all.removeWhere((e) => e.id == id);
     await saveAll(all);
+
+    // 画像フォルダごと削除（失敗しても落ちない設計）
+    await ImageStorage.deleteEntryDir(id);
   }
 
   /// 新規作成（ID自動生成）
-  static TempleEntry newEntry() {
-    return newEntryWithId(DateTime.now().millisecondsSinceEpoch.toString());
-  }
+  static TempleEntry newEntry() => newEntryWithId(_genId());
 
   /// ★新規作成（ID指定）
   /// BookPage が templeId を持って開かれるケースでも、IDがブレないようにする
@@ -190,9 +166,11 @@ class TempleStore {
       sect: '',
       honzon: '',
       memo: '',
-      albumImages: [],
-      goshuinImages: [],
+      albumImagePaths: const [],
+      goshuinImagePaths: const [],
       updatedAtMillis: DateTime.now().millisecondsSinceEpoch,
     );
   }
+
+  static String _genId() => DateTime.now().millisecondsSinceEpoch.toString();
 }

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -8,11 +9,12 @@ import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:image/image.dart' as img;
 
 import 'temple_store.dart';
+import 'image_storage.dart'; // ★追加：ファイル保存ヘルパー
 import 'pages/cover.dart';
 import 'pages/qr_scan.dart';
-import 'package:image/image.dart' as img;
 
 class BookPage extends StatefulWidget {
   const BookPage({
@@ -20,14 +22,13 @@ class BookPage extends StatefulWidget {
     required this.templeId,
     this.templeIds,
     this.currentIndex,
-    this.initialQrUrl, // ★追加：寺院一覧の「QRで追加」から渡されるURL
+    this.initialQrUrl,
   });
 
   final String templeId;
   final List<String>? templeIds;
   final int? currentIndex;
-
-  final String? initialQrUrl; // ★追加
+  final String? initialQrUrl;
 
   @override
   State<BookPage> createState() => _BookPageState();
@@ -46,28 +47,26 @@ class _BookPageState extends State<BookPage> {
   final _scrollController = ScrollController();
   TempleEntry? _entry;
 
-  // アルバム
-  final List<Uint8List> _albumImages = [];
+  // アルバム（★パス運用）
+  final List<String> _albumPaths = [];
   bool _albumSelectionMode = false;
   final Set<int> _albumSelectedIndexes = <int>{};
 
-  // 御朱印（最大2枚運用）
-  final List<Uint8List> _goshuinImages = [];
-  int? _goshuinTrashSlot; // 長押ししたカードだけ🗑️を表示
+  // 御朱印（★パス運用・最大2枚）
+  final List<String> _goshuinPaths = [];
+  int? _goshuinTrashSlot;
 
   DateTime? _visitDate;
-
   final _picker = ImagePicker();
 
   // ================================
-  // 保存前に画像を軽量化する（御朱印用）
+  // 保存前に画像を軽量化（bytes→bytes）
   // ================================
   Uint8List _compressForStorage(
     Uint8List src, {
     int maxWidth = 1400,
     int quality = 82,
   }) {
-    // すでに軽ければ何もしない
     if (src.lengthInBytes < 250 * 1024) return src;
 
     try {
@@ -81,7 +80,6 @@ class _BookPageState extends State<BookPage> {
       final jpg = img.encodeJpg(resized, quality: quality);
       return Uint8List.fromList(jpg);
     } catch (_) {
-      // 失敗したら元のまま返す（安全側）
       return src;
     }
   }
@@ -91,14 +89,10 @@ class _BookPageState extends State<BookPage> {
     super.initState();
     _loadEntry();
 
-    // ★寺院一覧の「QRで追加」から来た場合、起動直後に自動で取込する
     final url = widget.initialQrUrl?.trim();
     if (url != null && url.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) async {
-        // 御朱印①に入れる（slot=0）
         await _setGoshuinFromQrUrl(0, url);
-
-        // 取込後の誘導（昨日作ったやつ）
         await _afterQrImported();
       });
     }
@@ -113,10 +107,8 @@ class _BookPageState extends State<BookPage> {
     _sectController.dispose();
     _honzonController.dispose();
 
-    // ★QR取込後の誘導用
     _memoFocusNode.dispose();
     _scrollController.dispose();
-
     super.dispose();
   }
 
@@ -127,12 +119,9 @@ class _BookPageState extends State<BookPage> {
 
   Future<void> _loadEntry() async {
     final loaded = await TempleStore.loadById(widget.templeId);
-
-    // ★templeIdで開かれたなら、同じIDの新規エントリを作る（IDブレ防止）
     final entry = loaded ?? TempleStore.newEntryWithId(widget.templeId);
     _entry = entry;
 
-    // ★新規だった場合は、開いた時点で一覧に存在させる（「作ったのに消えた」を防ぐ）
     if (loaded == null) {
       await TempleStore.upsert(entry);
     }
@@ -147,13 +136,13 @@ class _BookPageState extends State<BookPage> {
 
     _visitDate = _parseDate(entry.visitDateText);
 
-    _albumImages
+    _albumPaths
       ..clear()
-      ..addAll(entry.albumImages);
+      ..addAll(entry.albumImagePaths);
 
-    _goshuinImages
+    _goshuinPaths
       ..clear()
-      ..addAll(entry.goshuinImages);
+      ..addAll(entry.goshuinImagePaths.take(2));
 
     if (mounted) setState(() {});
   }
@@ -162,7 +151,7 @@ class _BookPageState extends State<BookPage> {
     final e = _entry;
     if (e == null) return;
 
-    // 失敗したときに戻せるように、直前のスナップショットを持つ
+    // スナップショット（テキストだけでOK：画像はパス運用なので軽い）
     final prevTempleName = e.templeName;
     final prevVisitDateText = e.visitDateText;
     final prevMemo = e.memo;
@@ -171,10 +160,10 @@ class _BookPageState extends State<BookPage> {
     final prevSect = e.sect;
     final prevHonzon = e.honzon;
 
-    final prevAlbumImages = List<Uint8List>.from(e.albumImages);
-    final prevGoshuinImages = List<Uint8List>.from(e.goshuinImages);
+    final prevAlbum = List<String>.from(e.albumImagePaths);
+    final prevGoshuin = List<String>.from(e.goshuinImagePaths);
 
-    // 反映（テキスト）
+    // 反映
     e.templeName = _templeNameController.text;
     e.visitDateText = _visitDateController.text;
     e.memo = _memoController.text;
@@ -183,29 +172,13 @@ class _BookPageState extends State<BookPage> {
     e.sect = _sectController.text;
     e.honzon = _honzonController.text;
 
-    // ★アルバムも保存前に軽量化（ここが今回の本命）
-    final album = _albumImages.map((b) {
-      if (b.isEmpty) return b;
-      return _compressForStorage(
-        b,
-        maxWidth: 1600, // アルバムは少し大きめでもOK
-        quality: 80, // 少し軽め
-      );
-    }).toList();
-    e.albumImages = album;
-
-    // ★御朱印は保存前に軽量化（最大2枚）
-    final goshuin = _goshuinImages.take(2).map((b) {
-      if (b.isEmpty) return b;
-      return _compressForStorage(b);
-    }).toList();
-    e.goshuinImages = goshuin;
+    e.albumImagePaths = List<String>.from(_albumPaths);
+    e.goshuinImagePaths = List<String>.from(_goshuinPaths.take(2));
+    e.updatedAtMillis = DateTime.now().millisecondsSinceEpoch;
 
     final ok = await TempleStore.upsert(e);
-
     if (!ok) {
-      // 保存に失敗した（ほぼ容量・ストレージ制限）
-      // 状態を戻す（次の保存で壊れたデータが上書きされるのを防ぐ）
+      // 戻す
       e.templeName = prevTempleName;
       e.visitDateText = prevVisitDateText;
       e.memo = prevMemo;
@@ -214,16 +187,15 @@ class _BookPageState extends State<BookPage> {
       e.sect = prevSect;
       e.honzon = prevHonzon;
 
-      e.albumImages = prevAlbumImages;
-      e.goshuinImages = prevGoshuinImages;
+      e.albumImagePaths = prevAlbum;
+      e.goshuinImagePaths = prevGoshuin;
 
       if (mounted) {
-        _snack('保存できませんでした（容量制限の可能性）。画像を減らすか軽い画像で試してください');
+        _snack('保存できませんでした（ストレージ制限の可能性）。');
       }
     }
   }
 
-  /// 保存→再読み込みで検証（誤SnackBar対策）
   Future<bool> _saveNowVerified({bool verifyGoshuin = true}) async {
     final e = _entry;
     if (e == null) return false;
@@ -240,14 +212,9 @@ class _BookPageState extends State<BookPage> {
 
       if (!verifyGoshuin) return true;
 
-      final nowList = _goshuinImages
-          .where((b) => b.isNotEmpty)
-          .map((b) => b.length)
-          .toList();
-      final savedList = reloaded.goshuinImages
-          .where((b) => b.isNotEmpty)
-          .map((b) => b.length)
-          .toList();
+      final nowList = _goshuinPaths.where((p) => p.trim().isNotEmpty).toList();
+      final savedList =
+          reloaded.goshuinImagePaths.where((p) => p.trim().isNotEmpty).toList();
 
       if (nowList.length != savedList.length) return false;
       for (var i = 0; i < nowList.length; i++) {
@@ -326,7 +293,6 @@ class _BookPageState extends State<BookPage> {
   }
 
   Future<void> _pickDate() async {
-    // フォーカスを外して、日付欄の帯（ハイライト）を出にくくする
     FocusScope.of(context).unfocus();
 
     final picked = await showDatePicker(
@@ -346,13 +312,10 @@ class _BookPageState extends State<BookPage> {
     if (mounted) setState(() {});
   }
 
-// ★カレンダーアイコンを押したら「今日」にする
   Future<void> _setToday() async {
-    // フォーカスを外して、日付欄の帯（ハイライト）を出にくくする
     FocusScope.of(context).unfocus();
 
     final now = DateTime.now();
-
     _visitDate = DateTime(now.year, now.month, now.day);
     _visitDateController.text = _formatDate(_visitDate!);
 
@@ -397,35 +360,59 @@ class _BookPageState extends State<BookPage> {
     Share.share(text.toString());
   }
 
-  // ---------- 御朱印：スロット操作 ----------
-  Uint8List _getSlot(int slot) {
-    if (slot < 0) return Uint8List(0);
-    if (slot >= _goshuinImages.length) return Uint8List(0);
-    return _goshuinImages[slot];
+  // ---------- 御朱印：スロット操作（パス） ----------
+  String _getSlotPath(int slot) {
+    if (slot < 0) return '';
+    if (slot >= _goshuinPaths.length) return '';
+    return _goshuinPaths[slot];
   }
 
-  void _setSlotBytes(int slot, Uint8List bytes) {
-    while (_goshuinImages.length <= slot) {
-      _goshuinImages.add(Uint8List(0));
+  void _setSlotPath(int slot, String path) {
+    while (_goshuinPaths.length <= slot) {
+      _goshuinPaths.add('');
     }
-    _goshuinImages[slot] = bytes;
+    _goshuinPaths[slot] = path;
 
-    while (_goshuinImages.isNotEmpty && _goshuinImages.last.isEmpty) {
-      _goshuinImages.removeLast();
+    while (_goshuinPaths.isNotEmpty && _goshuinPaths.last.trim().isEmpty) {
+      _goshuinPaths.removeLast();
     }
-
-    if (_goshuinImages.length > 2) {
-      _goshuinImages.removeRange(2, _goshuinImages.length);
+    if (_goshuinPaths.length > 2) {
+      _goshuinPaths.removeRange(2, _goshuinPaths.length);
     }
   }
 
   Future<void> _setGoshuinFromGallery(int slot) async {
+    if (kIsWeb) {
+      _snack('Webではファイル保存が使えません（スマホアプリでご利用ください）。');
+      return;
+    }
+    final e = _entry;
+    if (e == null) return;
+
     try {
       final x = await _picker.pickImage(source: ImageSource.gallery);
       if (x == null) return;
 
-      final bytes = await x.readAsBytes();
-      setState(() => _setSlotBytes(slot, bytes));
+      // できるだけパスコピー（高速）
+      final copied = await ImageStorage.copyFromPath(
+        entryId: e.id,
+        sourcePath: x.path,
+        kind: 'goshuin',
+      );
+
+      if (copied.isEmpty) {
+        // 念のためbytes保存にフォールバック
+        final bytes = _compressForStorage(await x.readAsBytes());
+        final saved = await ImageStorage.saveBytes(
+          entryId: e.id,
+          bytes: bytes,
+          kind: 'goshuin',
+          ext: 'jpg',
+        );
+        setState(() => _setSlotPath(slot, saved));
+      } else {
+        setState(() => _setSlotPath(slot, copied));
+      }
     } catch (e) {
       debugPrint('御朱印（ギャラリー）読み込みエラー: $e');
       _snack('画像の読み込みに失敗しました');
@@ -437,12 +424,25 @@ class _BookPageState extends State<BookPage> {
   }
 
   Future<void> _setGoshuinFromCamera(int slot) async {
+    if (kIsWeb) {
+      _snack('Webではファイル保存が使えません（スマホアプリでご利用ください）。');
+      return;
+    }
+    final e = _entry;
+    if (e == null) return;
+
     try {
       final x = await _picker.pickImage(source: ImageSource.camera);
       if (x == null) return;
 
-      final bytes = await x.readAsBytes();
-      setState(() => _setSlotBytes(slot, bytes));
+      final bytes = _compressForStorage(await x.readAsBytes());
+      final saved = await ImageStorage.saveBytes(
+        entryId: e.id,
+        bytes: bytes,
+        kind: 'goshuin',
+        ext: 'jpg',
+      );
+      setState(() => _setSlotPath(slot, saved));
     } catch (e) {
       debugPrint('御朱印（カメラ）読み込みエラー: $e');
       _snack('画像の読み込みに失敗しました');
@@ -507,12 +507,12 @@ class _BookPageState extends State<BookPage> {
           }
 
           await _downloadAndSetImage(slot, Uri.parse(imageUrl));
-          return; // ★ここでは_afterQrImportedは呼ばない（呼び元で統一）
+          return;
         }
       }
 
       await _downloadAndSetImage(slot, uri);
-      return; // ★ここでも呼ばない
+      return;
     } catch (e) {
       if (kIsWeb) {
         _snack(
@@ -530,19 +530,16 @@ class _BookPageState extends State<BookPage> {
   Future<void> _afterQrImported() async {
     if (!mounted) return;
 
-    // UIが描画されるのを少し待つ
     await Future.delayed(const Duration(milliseconds: 80));
     if (!mounted) return;
 
     final visitEmpty = _visitDateController.text.trim().isEmpty;
 
     if (visitEmpty) {
-      // 参拝日が空ならカレンダーを開く
       _pickDate();
       return;
     }
 
-    // 参拝日が入ってるならメモへ誘導
     try {
       await _scrollController.animateTo(
         _scrollController.position.maxScrollExtent,
@@ -569,23 +566,24 @@ class _BookPageState extends State<BookPage> {
   void _applyTempleInfoFromJson(Map<String, dynamic> obj) {
     final temple = obj['temple'];
     if (temple is Map<String, dynamic>) {
-      if (temple['name'] is String) {
-        _templeNameController.text = temple['name'];
-      }
+      if (temple['name'] is String) _templeNameController.text = temple['name'];
       if (temple['address'] is String) {
         _addressController.text = temple['address'];
       }
-      if (temple['sect'] is String) {
-        _sectController.text = temple['sect'];
-      }
-      if (temple['honzon'] is String) {
-        _honzonController.text = temple['honzon'];
-      }
+      if (temple['sect'] is String) _sectController.text = temple['sect'];
+      if (temple['honzon'] is String) _honzonController.text = temple['honzon'];
     }
     setState(() {});
   }
 
   Future<void> _downloadAndSetImage(int slot, Uri uri) async {
+    if (kIsWeb) {
+      _snack('Webではファイル保存が使えません（スマホアプリでご利用ください）。');
+      return;
+    }
+    final e = _entry;
+    if (e == null) return;
+
     final res = await http.get(uri);
     if (res.statusCode != 200) {
       _snack('画像取得に失敗しました（${res.statusCode}）');
@@ -598,8 +596,17 @@ class _BookPageState extends State<BookPage> {
       return;
     }
 
+    // ★QR取得画像も保存前に軽量化してからファイル化
+    final compressed = _compressForStorage(bytes);
+    final saved = await ImageStorage.saveBytes(
+      entryId: e.id,
+      bytes: compressed,
+      kind: 'goshuin',
+      ext: 'jpg',
+    );
+
     setState(() {
-      _setSlotBytes(slot, bytes);
+      _setSlotPath(slot, saved);
       _goshuinTrashSlot = null;
     });
 
@@ -612,18 +619,17 @@ class _BookPageState extends State<BookPage> {
   }
 
   void _openGoshuinViewer(int slot) {
-    final bytes = _getSlot(slot);
-    if (bytes.isEmpty) return;
+    final path = _getSlotPath(slot);
+    if (path.trim().isEmpty) return;
 
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => _SingleImageViewer(bytes: bytes, title: '御朱印'),
+        builder: (_) => _SingleImageViewer(path: path, title: '御朱印'),
       ),
     );
   }
 
-  /// ★修正版：ボトムシートのリップル（黒い円）を抑止
   Future<void> _chooseGoshuinSource(int slot) async {
     final result = await showModalBottomSheet<String>(
       context: context,
@@ -649,7 +655,6 @@ class _BookPageState extends State<BookPage> {
                 enableFeedback: false,
                 onTap: () => Navigator.pop(context, 'camera'),
               ),
-              // ★ これを追加
               ListTile(
                 leading: const Icon(Icons.qr_code_scanner),
                 title: const Text('QRコード'),
@@ -670,9 +675,9 @@ class _BookPageState extends State<BookPage> {
     }
   }
 
-  // ---------- 御朱印：長押しで🗑️表示（カード内右上） ----------
+  // ---------- 御朱印：長押しで🗑️表示 ----------
   void _showGoshuinTrash(int slot) {
-    final has = _getSlot(slot).isNotEmpty;
+    final has = _getSlotPath(slot).trim().isNotEmpty;
     if (!has) return;
     setState(() => _goshuinTrashSlot = slot);
   }
@@ -683,8 +688,8 @@ class _BookPageState extends State<BookPage> {
   }
 
   Future<void> _deleteGoshuinSlot(int slot) async {
-    final has = _getSlot(slot).isNotEmpty;
-    if (!has) return;
+    final path = _getSlotPath(slot);
+    if (path.trim().isEmpty) return;
 
     final okDialog = await showDialog<bool>(
       context: context,
@@ -705,12 +710,15 @@ class _BookPageState extends State<BookPage> {
     );
     if (okDialog != true) return;
 
+    // ★ファイルも削除
+    await ImageStorage.deleteFile(path);
+
     setState(() {
-      if (slot >= 0 && slot < _goshuinImages.length) {
-        _goshuinImages[slot] = Uint8List(0);
+      if (slot >= 0 && slot < _goshuinPaths.length) {
+        _goshuinPaths[slot] = '';
       }
-      while (_goshuinImages.isNotEmpty && _goshuinImages.last.isEmpty) {
-        _goshuinImages.removeLast();
+      while (_goshuinPaths.isNotEmpty && _goshuinPaths.last.trim().isEmpty) {
+        _goshuinPaths.removeLast();
       }
       _goshuinTrashSlot = null;
     });
@@ -720,8 +728,8 @@ class _BookPageState extends State<BookPage> {
   }
 
   Widget _goshuinSlot({required int slot, required String label}) {
-    final bytes = _getSlot(slot);
-    final has = bytes.isNotEmpty;
+    final path = _getSlotPath(slot);
+    final has = path.trim().isNotEmpty;
     final showTrash = _goshuinTrashSlot == slot;
 
     return Column(
@@ -733,15 +741,10 @@ class _BookPageState extends State<BookPage> {
         GestureDetector(
           onLongPress: has ? () => _showGoshuinTrash(slot) : null,
           onTap: () async {
-            // 🗑️表示中はまず閉じる
             if (_goshuinTrashSlot != null) {
               _hideGoshuinTrash();
               return;
             }
-
-            // 元の操作感：
-            // - 画像あり：拡大表示
-            // - 画像なし：ライブラリ/カメラ選択
             if (has) {
               _openGoshuinViewer(slot);
             } else {
@@ -760,7 +763,10 @@ class _BookPageState extends State<BookPage> {
                 child: has
                     ? ClipRRect(
                         borderRadius: BorderRadius.circular(11),
-                        child: Image.memory(bytes, fit: BoxFit.cover),
+                        child: Image.file(
+                          File(path),
+                          fit: BoxFit.cover,
+                        ),
                       )
                     : const Center(
                         child: Icon(Icons.add_photo_alternate_outlined,
@@ -801,22 +807,39 @@ class _BookPageState extends State<BookPage> {
     );
   }
 
-  // ---------- アルバム：複数追加 ----------
+  // ---------- アルバム：複数追加（パス保存） ----------
   Future<void> _pickImages() async {
+    if (kIsWeb) {
+      _snack('Webではファイル保存が使えません（スマホアプリでご利用ください）。');
+      return;
+    }
+    final e = _entry;
+    if (e == null) return;
+
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.image,
         allowMultiple: true,
-        withData: true,
+        withData: false, // ★スマホはパスコピーでOK
       );
       if (result == null || result.files.isEmpty) return;
 
-      final picked =
-          result.files.map((f) => f.bytes).whereType<Uint8List>().toList();
-      if (picked.isEmpty) return;
+      final added = <String>[];
+      for (final f in result.files) {
+        final pth = f.path;
+        if (pth == null || pth.trim().isEmpty) continue;
+
+        final copied = await ImageStorage.copyFromPath(
+          entryId: e.id,
+          sourcePath: pth,
+          kind: 'album',
+        );
+        if (copied.isNotEmpty) added.add(copied);
+      }
+      if (added.isEmpty) return;
 
       setState(() {
-        _albumImages.addAll(picked);
+        _albumPaths.addAll(added);
       });
 
       final ok = await _saveNowVerified(verifyGoshuin: false);
@@ -877,12 +900,21 @@ class _BookPageState extends State<BookPage> {
     );
     if (okDialog != true) return;
 
+    final sorted = _albumSelectedIndexes.toList()
+      ..sort((a, b) => b.compareTo(a));
+
+    // ★ファイルも削除してからリストから消す
+    for (final i in sorted) {
+      if (i >= 0 && i < _albumPaths.length) {
+        final path = _albumPaths[i];
+        await ImageStorage.deleteFile(path);
+      }
+    }
+
     setState(() {
-      final sorted = _albumSelectedIndexes.toList()
-        ..sort((a, b) => b.compareTo(a));
       for (final i in sorted) {
-        if (i >= 0 && i < _albumImages.length) {
-          _albumImages.removeAt(i);
+        if (i >= 0 && i < _albumPaths.length) {
+          _albumPaths.removeAt(i);
         }
       }
       _albumSelectedIndexes.clear();
@@ -897,7 +929,7 @@ class _BookPageState extends State<BookPage> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => _ImageViewer(images: _albumImages, index: index),
+        builder: (_) => _ImageViewer(paths: _albumPaths, index: index),
       ),
     );
   }
@@ -910,7 +942,6 @@ class _BookPageState extends State<BookPage> {
         ? '御朱印帳'
         : '御朱印帳（${_templeNameController.text}）';
 
-// ★寺院プロフィールカードのTextFieldの縦位置を統一するための共通Decoration
     final commonInputDecoration = const InputDecoration(
       contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 16),
     );
@@ -920,14 +951,11 @@ class _BookPageState extends State<BookPage> {
         title: Text(baseTitle),
         automaticallyImplyLeading: false,
         actions: [
-          // 共有（既存）
           IconButton(
             tooltip: '共有',
             icon: const Icon(Icons.share),
             onPressed: _share,
           ),
-
-          // ★トップへ戻る（家アイコン）を一番右に
           IconButton(
             tooltip: 'トップへ',
             icon: const Icon(Icons.home),
@@ -942,7 +970,6 @@ class _BookPageState extends State<BookPage> {
       ),
       body: Stack(
         children: [
-          // スクロールしたら🗑️を閉じる（誤操作防止）
           NotificationListener<ScrollNotification>(
             onNotification: (n) {
               if (_goshuinTrashSlot != null &&
@@ -959,7 +986,7 @@ class _BookPageState extends State<BookPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-// 御朱印（先に表示）
+                  // 御朱印
                   Card(
                     child: Padding(
                       padding: const EdgeInsets.all(12),
@@ -993,18 +1020,16 @@ class _BookPageState extends State<BookPage> {
                       ),
                     ),
                   ),
-
                   const SizedBox(height: 24),
 
-// 寺院プロフィール（後に表示）
+                  // 寺院プロフィール
                   Card(
                     child: Padding(
                       padding: const EdgeInsets.all(16),
                       child: Column(
                         children: [
-// 参拝日（欄タップ＝選択 / アイコン＝今日）
                           InkWell(
-                            onTap: _pickDate, // 日付欄タップ → カレンダー表示
+                            onTap: _pickDate,
                             child: AbsorbPointer(
                               child: TextField(
                                 controller: _visitDateController,
@@ -1015,14 +1040,13 @@ class _BookPageState extends State<BookPage> {
                                   labelText: '参拝日',
                                   suffixIcon: IconButton(
                                     icon: const Icon(Icons.calendar_today),
-                                    onPressed: _setToday, // ★アイコン → 今日にする
+                                    onPressed: _setToday,
                                   ),
                                 ),
                               ),
                             ),
                           ),
                           const SizedBox(height: 12),
-
                           TextField(
                             controller: _templeNameController,
                             onChanged: (_) => _saveNow(),
@@ -1031,7 +1055,6 @@ class _BookPageState extends State<BookPage> {
                             ),
                           ),
                           const SizedBox(height: 12),
-
                           TextField(
                             controller: _addressController,
                             onChanged: (_) => _saveNow(),
@@ -1044,7 +1067,6 @@ class _BookPageState extends State<BookPage> {
                             ),
                           ),
                           const SizedBox(height: 12),
-
                           TextField(
                             controller: _sectController,
                             onChanged: (_) => _saveNow(),
@@ -1053,7 +1075,6 @@ class _BookPageState extends State<BookPage> {
                             ),
                           ),
                           const SizedBox(height: 12),
-
                           TextField(
                             controller: _honzonController,
                             onChanged: (_) => _saveNow(),
@@ -1061,8 +1082,6 @@ class _BookPageState extends State<BookPage> {
                               labelText: '御本尊',
                             ),
                           ),
-
-// ★寺院プロフィールCardを閉じる（ここが抜けていた）
                         ],
                       ),
                     ),
@@ -1073,7 +1092,7 @@ class _BookPageState extends State<BookPage> {
                   // メモ
                   TextField(
                     controller: _memoController,
-                    focusNode: _memoFocusNode, // ★QR取込後にここへフォーカス
+                    focusNode: _memoFocusNode,
                     maxLines: 4,
                     onChanged: (_) => _saveNow(),
                     decoration: const InputDecoration(labelText: '参拝メモ'),
@@ -1089,9 +1108,7 @@ class _BookPageState extends State<BookPage> {
                         children: [
                           const Text(
                             '参拝アルバム',
-                            style: TextStyle(
-                              fontSize: 16,
-                            ),
+                            style: TextStyle(fontSize: 16),
                           ),
                           if (_albumSelectionMode) ...[
                             const SizedBox(width: 10),
@@ -1130,13 +1147,13 @@ class _BookPageState extends State<BookPage> {
                   ),
                   const SizedBox(height: 12),
 
-                  if (_albumImages.isEmpty)
+                  if (_albumPaths.isEmpty)
                     const Text('まだ写真がありません。右の「追加」から入れられます。')
                   else
                     GridView.builder(
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
-                      itemCount: _albumImages.length,
+                      itemCount: _albumPaths.length,
                       gridDelegate:
                           const SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: 3,
@@ -1145,6 +1162,7 @@ class _BookPageState extends State<BookPage> {
                       ),
                       itemBuilder: (_, i) {
                         final selected = _albumSelectedIndexes.contains(i);
+                        final path = _albumPaths[i];
 
                         return GestureDetector(
                           onLongPress: () => _enterAlbumSelectionMode(i),
@@ -1165,8 +1183,8 @@ class _BookPageState extends State<BookPage> {
                                 ),
                                 child: ClipRRect(
                                   borderRadius: BorderRadius.circular(11),
-                                  child: Image.memory(
-                                    _albumImages[i],
+                                  child: Image.file(
+                                    File(path),
                                     fit: BoxFit.cover,
                                     width: double.infinity,
                                     height: double.infinity,
@@ -1243,9 +1261,9 @@ class _BookPageState extends State<BookPage> {
 }
 
 class _ImageViewer extends StatelessWidget {
-  const _ImageViewer({required this.images, required this.index});
+  const _ImageViewer({required this.paths, required this.index});
 
-  final List<Uint8List> images;
+  final List<String> paths;
   final int index;
 
   @override
@@ -1260,10 +1278,10 @@ class _ImageViewer extends StatelessWidget {
       ),
       body: PageView.builder(
         controller: controller,
-        itemCount: images.length,
+        itemCount: paths.length,
         itemBuilder: (_, i) => Center(
           child: InteractiveViewer(
-            child: Image.memory(images[i]),
+            child: Image.file(File(paths[i])),
           ),
         ),
       ),
@@ -1272,9 +1290,9 @@ class _ImageViewer extends StatelessWidget {
 }
 
 class _SingleImageViewer extends StatelessWidget {
-  const _SingleImageViewer({required this.bytes, required this.title});
+  const _SingleImageViewer({required this.path, required this.title});
 
-  final Uint8List bytes;
+  final String path;
   final String title;
 
   @override
@@ -1288,7 +1306,7 @@ class _SingleImageViewer extends StatelessWidget {
       ),
       body: Center(
         child: InteractiveViewer(
-          child: Image.memory(bytes),
+          child: Image.file(File(path)),
         ),
       ),
     );

@@ -1,10 +1,10 @@
-import 'dart:typed_data';
+import 'dart:io';
 import 'dart:ui'; // ImageFilter（ぼかし）用
 
 import 'package:flutter/material.dart';
 
 import 'pages/cover.dart';
-import 'pages/qr_scan.dart'; // ★追加：QRスキャン画面
+import 'pages/qr_scan.dart';
 import 'temple_store.dart';
 import 'book.dart';
 
@@ -133,7 +133,6 @@ class _TempleListPageState extends State<TempleListPage> {
 
   /// ★QRで追加（QR→新規カード作成→BookPageを開く→自動取込）
   Future<void> _addFromQr() async {
-    // まずQRスキャン
     final code = await Navigator.push<String>(
       context,
       MaterialPageRoute(builder: (_) => const QrScanPage()),
@@ -144,10 +143,7 @@ class _TempleListPageState extends State<TempleListPage> {
 
     final qrUrl = code.trim();
 
-    // 新しい寺院IDを発行
     final newId = DateTime.now().millisecondsSinceEpoch.toString();
-
-    // 先に“空カード”を一覧に追加して保存（Book側で開いた瞬間に保存される実装でもOKだが二重に安全）
     final entry = TempleStore.newEntryWithId(newId);
 
     setState(() {
@@ -165,7 +161,7 @@ class _TempleListPageState extends State<TempleListPage> {
         templeId: entry.id,
         templeIds: ids,
         currentIndex: idx,
-        initialQrUrl: qrUrl, // ★BookPageが起動時に自動でQR取込する
+        initialQrUrl: qrUrl,
       ),
     );
 
@@ -232,10 +228,12 @@ class _TempleListPageState extends State<TempleListPage> {
     }
   }
 
-  /// 御朱印サムネ：①があれば①、なければ②、どちらも空ならnull
-  Uint8List? _pickGoshuinThumbBytes(TempleEntry e) {
-    for (final b in e.goshuinImages) {
-      if (b.isNotEmpty) return b;
+  /// 御朱印サムネ：①があれば①、なければ②、どちらも空ならnull（★パス版）
+  String? _pickGoshuinThumbPath(TempleEntry e) {
+    for (final p in e.goshuinImagePaths) {
+      if (p.trim().isEmpty) continue;
+      final f = File(p);
+      if (f.existsSync()) return p;
     }
     return null;
   }
@@ -252,7 +250,7 @@ class _TempleListPageState extends State<TempleListPage> {
   Widget _gridTile(TempleEntry e) {
     final title = e.templeName.isEmpty ? '（寺院名未入力）' : e.templeName;
     final date = e.visitDateText.isEmpty ? '参拝日：未入力' : e.visitDateText;
-    final bytes = _pickGoshuinThumbBytes(e);
+    final thumbPath = _pickGoshuinThumbPath(e);
     final showTrash = _trashTempleId == e.id;
 
     return GestureDetector(
@@ -275,15 +273,15 @@ class _TempleListPageState extends State<TempleListPage> {
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(11),
-              child: bytes == null
+              child: thumbPath == null
                   ? const Center(
                       child: Icon(Icons.image_outlined,
                           color: Colors.black38, size: 28),
                     )
                   : Padding(
                       padding: const EdgeInsets.all(6),
-                      child: Image.memory(
-                        bytes,
+                      child: Image.file(
+                        File(thumbPath),
                         fit: BoxFit.contain,
                         alignment: Alignment.center,
                         width: double.infinity,
@@ -306,7 +304,7 @@ class _TempleListPageState extends State<TempleListPage> {
                 child: Container(
                   padding: const EdgeInsets.fromLTRB(8, 5, 8, 6),
                   decoration: BoxDecoration(
-                    color: _bandBaseColor.withOpacity(0.18), // ← 濃紺ここ
+                    color: _bandBaseColor.withOpacity(0.18),
                     border: Border(
                       top: BorderSide(
                         color: Colors.white.withOpacity(0.18),
@@ -427,8 +425,6 @@ class _TempleListPageState extends State<TempleListPage> {
           ),
         ],
       ),
-
-      // ★2段FAB：上が「QRで追加」、下が既存の「寺院を追加」
       floatingActionButton: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.end,
@@ -448,7 +444,6 @@ class _TempleListPageState extends State<TempleListPage> {
           ),
         ],
       ),
-
       body: _entries.isEmpty
           ? const Center(
               child: Text('まだ寺院ページがありません。\n右下の「寺院を追加」から作成できます。'),
