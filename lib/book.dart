@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -11,8 +10,8 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:image/image.dart' as img;
 
+import 'image_storage.dart';
 import 'temple_store.dart';
-import 'image_storage.dart'; // ★追加：ファイル保存ヘルパー
 import 'pages/cover.dart';
 import 'pages/qr_scan.dart';
 
@@ -45,22 +44,28 @@ class _BookPageState extends State<BookPage> {
 
   final _memoFocusNode = FocusNode();
   final _scrollController = ScrollController();
+
   TempleEntry? _entry;
 
-  // アルバム（★パス運用）
+  // ----------------------------
+  // 画像：保存は「パス」、表示は「bytes」をキャッシュ
+  // ----------------------------
   final List<String> _albumPaths = [];
-  bool _albumSelectionMode = false;
-  final Set<int> _albumSelectedIndexes = <int>{};
+  final Map<String, Uint8List> _albumFullBytesCache = {}; // key=path（ビューア用）
+  final Map<String, Future<Uint8List?>> _albumThumbFutureCache =
+      {}; // key=path（Grid用）
 
-  // 御朱印（★パス運用・最大2枚）
-  final List<String> _goshuinPaths = [];
+  final List<String> _goshuinPaths = []; // slot 0/1
+  final Map<String, Uint8List> _goshuinFullBytesCache = {}; // key=path（ビューア用）
+  final Map<String, Future<Uint8List?>> _goshuinThumbFutureCache =
+      {}; // key=path（スロット表示用）
   int? _goshuinTrashSlot;
 
   DateTime? _visitDate;
   final _picker = ImagePicker();
 
   // ================================
-  // 保存前に画像を軽量化（bytes→bytes）
+  // 保存前に画像を軽量化する（御朱印/アルバム共通）
   // ================================
   Uint8List _compressForStorage(
     Uint8List src, {
@@ -68,7 +73,6 @@ class _BookPageState extends State<BookPage> {
     int quality = 82,
   }) {
     if (src.lengthInBytes < 250 * 1024) return src;
-
     try {
       final decoded = img.decodeImage(src);
       if (decoded == null) return src;
@@ -106,7 +110,6 @@ class _BookPageState extends State<BookPage> {
     _addressController.dispose();
     _sectController.dispose();
     _honzonController.dispose();
-
     _memoFocusNode.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -117,6 +120,9 @@ class _BookPageState extends State<BookPage> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
+  // ----------------------------
+  // Load / Save
+  // ----------------------------
   Future<void> _loadEntry() async {
     final loaded = await TempleStore.loadById(widget.templeId);
     final entry = loaded ?? TempleStore.newEntryWithId(widget.templeId);
@@ -129,7 +135,6 @@ class _BookPageState extends State<BookPage> {
     _templeNameController.text = entry.templeName;
     _visitDateController.text = entry.visitDateText;
     _memoController.text = entry.memo;
-
     _addressController.text = entry.address;
     _sectController.text = entry.sect;
     _honzonController.text = entry.honzon;
@@ -144,6 +149,10 @@ class _BookPageState extends State<BookPage> {
       ..clear()
       ..addAll(entry.goshuinImagePaths.take(2));
 
+    // Futureキャッシュは並び/差し替えでブレるので軽くクリア
+    _albumThumbFutureCache.clear();
+    _goshuinThumbFutureCache.clear();
+
     if (mounted) setState(() {});
   }
 
@@ -151,19 +160,6 @@ class _BookPageState extends State<BookPage> {
     final e = _entry;
     if (e == null) return;
 
-    // スナップショット（テキストだけでOK：画像はパス運用なので軽い）
-    final prevTempleName = e.templeName;
-    final prevVisitDateText = e.visitDateText;
-    final prevMemo = e.memo;
-
-    final prevAddress = e.address;
-    final prevSect = e.sect;
-    final prevHonzon = e.honzon;
-
-    final prevAlbum = List<String>.from(e.albumImagePaths);
-    final prevGoshuin = List<String>.from(e.goshuinImagePaths);
-
-    // 反映
     e.templeName = _templeNameController.text;
     e.visitDateText = _visitDateController.text;
     e.memo = _memoController.text;
@@ -174,60 +170,14 @@ class _BookPageState extends State<BookPage> {
 
     e.albumImagePaths = List<String>.from(_albumPaths);
     e.goshuinImagePaths = List<String>.from(_goshuinPaths.take(2));
-    e.updatedAtMillis = DateTime.now().millisecondsSinceEpoch;
 
     final ok = await TempleStore.upsert(e);
-    if (!ok) {
-      // 戻す
-      e.templeName = prevTempleName;
-      e.visitDateText = prevVisitDateText;
-      e.memo = prevMemo;
-
-      e.address = prevAddress;
-      e.sect = prevSect;
-      e.honzon = prevHonzon;
-
-      e.albumImagePaths = prevAlbum;
-      e.goshuinImagePaths = prevGoshuin;
-
-      if (mounted) {
-        _snack('保存できませんでした（ストレージ制限の可能性）。');
-      }
-    }
+    if (!ok) _snack('保存できませんでした（ストレージ制限の可能性）');
   }
 
-  Future<bool> _saveNowVerified({bool verifyGoshuin = true}) async {
-    final e = _entry;
-    if (e == null) return false;
-
-    try {
-      await _saveNow();
-    } catch (err) {
-      debugPrint('saveNow exception (but will verify): $err');
-    }
-
-    try {
-      final reloaded = await TempleStore.loadById(e.id);
-      if (reloaded == null) return false;
-
-      if (!verifyGoshuin) return true;
-
-      final nowList = _goshuinPaths.where((p) => p.trim().isNotEmpty).toList();
-      final savedList =
-          reloaded.goshuinImagePaths.where((p) => p.trim().isNotEmpty).toList();
-
-      if (nowList.length != savedList.length) return false;
-      for (var i = 0; i < nowList.length; i++) {
-        if (nowList[i] != savedList[i]) return false;
-      }
-      return true;
-    } catch (err) {
-      debugPrint('save verify exception: $err');
-      return false;
-    }
-  }
-
-  // ---------- Kindle：前後ページ ----------
+  // ----------------------------
+  // Paging
+  // ----------------------------
   bool get _blockPaging => _albumSelectionMode || _goshuinTrashSlot != null;
 
   bool get _canGoPrev =>
@@ -277,7 +227,9 @@ class _BookPageState extends State<BookPage> {
     );
   }
 
-  // ---------- 日付 ----------
+  // ----------------------------
+  // Date
+  // ----------------------------
   String _formatDate(DateTime d) =>
       '${d.year}年${d.month.toString().padLeft(2, '0')}月${d.day.toString().padLeft(2, '0')}日';
 
@@ -305,27 +257,23 @@ class _BookPageState extends State<BookPage> {
 
     _visitDate = picked;
     _visitDateController.text = _formatDate(picked);
-
-    final ok = await _saveNowVerified(verifyGoshuin: false);
-    if (!ok) _snack('参拝日は表示できましたが、保存確認に失敗しました');
+    await _saveNow();
 
     if (mounted) setState(() {});
   }
 
   Future<void> _setToday() async {
     FocusScope.of(context).unfocus();
-
     final now = DateTime.now();
     _visitDate = DateTime(now.year, now.month, now.day);
     _visitDateController.text = _formatDate(_visitDate!);
-
-    final ok = await _saveNowVerified(verifyGoshuin: false);
-    if (!ok) _snack('参拝日は表示できましたが、保存確認に失敗しました');
-
+    await _saveNow();
     if (mounted) setState(() {});
   }
 
-  // ---------- 地図 ----------
+  // ----------------------------
+  // Maps
+  // ----------------------------
   Future<void> _openInMaps() async {
     final q = [
       _templeNameController.text.trim(),
@@ -345,7 +293,9 @@ class _BookPageState extends State<BookPage> {
     if (!ok) _snack('地図を開けませんでした');
   }
 
-  // ---------- 共有 ----------
+  // ----------------------------
+  // Share (text)
+  // ----------------------------
   Future<void> _share() async {
     final text = StringBuffer()
       ..writeln('寺院：${_templeNameController.text}')
@@ -360,7 +310,9 @@ class _BookPageState extends State<BookPage> {
     Share.share(text.toString());
   }
 
-  // ---------- 御朱印：スロット操作（パス） ----------
+  // ----------------------------
+  // Goshuin slots (paths)
+  // ----------------------------
   String _getSlotPath(int slot) {
     if (slot < 0) return '';
     if (slot >= _goshuinPaths.length) return '';
@@ -373,7 +325,7 @@ class _BookPageState extends State<BookPage> {
     }
     _goshuinPaths[slot] = path;
 
-    while (_goshuinPaths.isNotEmpty && _goshuinPaths.last.trim().isEmpty) {
+    while (_goshuinPaths.isNotEmpty && _goshuinPaths.last.isEmpty) {
       _goshuinPaths.removeLast();
     }
     if (_goshuinPaths.length > 2) {
@@ -381,76 +333,111 @@ class _BookPageState extends State<BookPage> {
     }
   }
 
+  Future<Uint8List?> _getGoshuinThumbBytes(int slot) async {
+    final p = _getSlotPath(slot);
+    if (p.isEmpty) return null;
+
+    return _goshuinThumbFutureCache.putIfAbsent(p, () async {
+      final t = await ImageStorage.loadThumbnail(p);
+      if (t != null && t.isNotEmpty) return t;
+      return await ImageStorage.loadImage(p);
+    });
+  }
+
+  Future<void> _openGoshuinViewer(int slot) async {
+    final path = _getSlotPath(slot);
+    if (path.isEmpty) return;
+
+    var full = _goshuinFullBytesCache[path];
+    if (full == null || full.isEmpty) {
+      final b = await ImageStorage.loadImage(path);
+      if (b == null || b.isEmpty) return;
+      _goshuinFullBytesCache[path] = b;
+      full = b;
+    }
+
+    if (!mounted) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => _SingleImageViewer(bytes: full!, title: '御朱印'),
+      ),
+    );
+  }
+
   Future<void> _setGoshuinFromGallery(int slot) async {
     if (kIsWeb) {
-      _snack('Webではファイル保存が使えません（スマホアプリでご利用ください）。');
+      _snack('Webではファイル保存できません。スマホアプリでご利用ください。');
       return;
     }
-    final e = _entry;
-    if (e == null) return;
 
     try {
       final x = await _picker.pickImage(source: ImageSource.gallery);
       if (x == null) return;
 
-      // できるだけパスコピー（高速）
-      final copied = await ImageStorage.copyFromPath(
-        entryId: e.id,
-        sourcePath: x.path,
-        kind: 'goshuin',
-      );
+      final raw = await x.readAsBytes();
+      final bytes = _compressForStorage(raw, maxWidth: 1800, quality: 88);
 
-      if (copied.isEmpty) {
-        // 念のためbytes保存にフォールバック
-        final bytes = _compressForStorage(await x.readAsBytes());
-        final saved = await ImageStorage.saveBytes(
-          entryId: e.id,
-          bytes: bytes,
-          kind: 'goshuin',
-          ext: 'jpg',
-        );
-        setState(() => _setSlotPath(slot, saved));
-      } else {
-        setState(() => _setSlotPath(slot, copied));
+      // 既存があれば削除
+      final oldPath = _getSlotPath(slot);
+      if (oldPath.isNotEmpty) {
+        await ImageStorage.deleteImage(oldPath);
+        _goshuinFullBytesCache.remove(oldPath);
+        _goshuinThumbFutureCache.remove(oldPath);
       }
+
+      final savedPath = await ImageStorage.saveImage(bytes, isGoshuin: true);
+
+      _goshuinFullBytesCache[savedPath] = bytes;
+      _goshuinThumbFutureCache.remove(savedPath);
+
+      setState(() {
+        _setSlotPath(slot, savedPath);
+        _goshuinTrashSlot = null;
+      });
+
+      await _saveNow();
     } catch (e) {
       debugPrint('御朱印（ギャラリー）読み込みエラー: $e');
       _snack('画像の読み込みに失敗しました');
-      return;
     }
-
-    final ok = await _saveNowVerified(verifyGoshuin: true);
-    if (!ok) _snack('画像は表示できましたが、保存確認に失敗しました');
   }
 
   Future<void> _setGoshuinFromCamera(int slot) async {
     if (kIsWeb) {
-      _snack('Webではファイル保存が使えません（スマホアプリでご利用ください）。');
+      _snack('Webではファイル保存できません。スマホアプリでご利用ください。');
       return;
     }
-    final e = _entry;
-    if (e == null) return;
 
     try {
       final x = await _picker.pickImage(source: ImageSource.camera);
       if (x == null) return;
 
-      final bytes = _compressForStorage(await x.readAsBytes());
-      final saved = await ImageStorage.saveBytes(
-        entryId: e.id,
-        bytes: bytes,
-        kind: 'goshuin',
-        ext: 'jpg',
-      );
-      setState(() => _setSlotPath(slot, saved));
+      final raw = await x.readAsBytes();
+      final bytes = _compressForStorage(raw, maxWidth: 1800, quality: 88);
+
+      final oldPath = _getSlotPath(slot);
+      if (oldPath.isNotEmpty) {
+        await ImageStorage.deleteImage(oldPath);
+        _goshuinFullBytesCache.remove(oldPath);
+        _goshuinThumbFutureCache.remove(oldPath);
+      }
+
+      final savedPath = await ImageStorage.saveImage(bytes, isGoshuin: true);
+
+      _goshuinFullBytesCache[savedPath] = bytes;
+      _goshuinThumbFutureCache.remove(savedPath);
+
+      setState(() {
+        _setSlotPath(slot, savedPath);
+        _goshuinTrashSlot = null;
+      });
+
+      await _saveNow();
     } catch (e) {
       debugPrint('御朱印（カメラ）読み込みエラー: $e');
       _snack('画像の読み込みに失敗しました');
-      return;
     }
-
-    final ok = await _saveNowVerified(verifyGoshuin: true);
-    if (!ok) _snack('画像は表示できましたが、保存確認に失敗しました');
   }
 
   Future<void> _setGoshuinFromQr(int slot) async {
@@ -467,6 +454,11 @@ class _BookPageState extends State<BookPage> {
   }
 
   Future<void> _setGoshuinFromQrUrl(int slot, String text) async {
+    if (kIsWeb) {
+      _snack('Webではファイル保存できません。スマホアプリでご利用ください。');
+      return;
+    }
+
     Uri? uri;
     try {
       uri = Uri.parse(text.trim());
@@ -497,7 +489,6 @@ class _BookPageState extends State<BookPage> {
         final body = utf8.decode(res.bodyBytes, allowMalformed: true).trim();
         if (body.startsWith('{')) {
           final obj = jsonDecode(body) as Map<String, dynamic>;
-
           _applyTempleInfoFromJson(obj);
 
           final imageUrl = _extractImageUrl(obj);
@@ -506,25 +497,52 @@ class _BookPageState extends State<BookPage> {
             return;
           }
 
-          await _downloadAndSetImage(slot, Uri.parse(imageUrl));
+          await _downloadAndSetGoshuin(slot, Uri.parse(imageUrl));
           return;
         }
       }
 
-      await _downloadAndSetImage(slot, uri);
-      return;
+      await _downloadAndSetGoshuin(slot, uri);
     } catch (e) {
-      if (kIsWeb) {
-        _snack(
-            'このURLはブラウザ制限(CORS)で取得できない可能性があります。URLを開いて画像を保存し、「写真ライブラリ」から追加してください。');
-        try {
-          await launchUrl(uri, mode: LaunchMode.externalApplication);
-        } catch (_) {}
-        return;
-      }
       debugPrint('御朱印（QR）取得エラー: $e');
       _snack('取得中にエラーが発生しました');
     }
+  }
+
+  Future<void> _downloadAndSetGoshuin(int slot, Uri uri) async {
+    final res = await http.get(uri);
+    if (res.statusCode != 200) {
+      _snack('画像取得に失敗しました（${res.statusCode}）');
+      return;
+    }
+
+    final raw = res.bodyBytes;
+    if (raw.isEmpty) {
+      _snack('画像データが空でした');
+      return;
+    }
+
+    final bytes = _compressForStorage(raw, maxWidth: 1800, quality: 88);
+
+    final oldPath = _getSlotPath(slot);
+    if (oldPath.isNotEmpty) {
+      await ImageStorage.deleteImage(oldPath);
+      _goshuinFullBytesCache.remove(oldPath);
+      _goshuinThumbFutureCache.remove(oldPath);
+    }
+
+    final savedPath = await ImageStorage.saveImage(bytes, isGoshuin: true);
+
+    _goshuinFullBytesCache[savedPath] = bytes;
+    _goshuinThumbFutureCache.remove(savedPath);
+
+    setState(() {
+      _setSlotPath(slot, savedPath);
+      _goshuinTrashSlot = null;
+    });
+
+    await _saveNow();
+    _snack('QRから御朱印を取り込みました');
   }
 
   Future<void> _afterQrImported() async {
@@ -567,67 +585,13 @@ class _BookPageState extends State<BookPage> {
     final temple = obj['temple'];
     if (temple is Map<String, dynamic>) {
       if (temple['name'] is String) _templeNameController.text = temple['name'];
-      if (temple['address'] is String) {
+      if (temple['address'] is String)
         _addressController.text = temple['address'];
-      }
       if (temple['sect'] is String) _sectController.text = temple['sect'];
       if (temple['honzon'] is String) _honzonController.text = temple['honzon'];
     }
     setState(() {});
-  }
-
-  Future<void> _downloadAndSetImage(int slot, Uri uri) async {
-    if (kIsWeb) {
-      _snack('Webではファイル保存が使えません（スマホアプリでご利用ください）。');
-      return;
-    }
-    final e = _entry;
-    if (e == null) return;
-
-    final res = await http.get(uri);
-    if (res.statusCode != 200) {
-      _snack('画像取得に失敗しました（${res.statusCode}）');
-      return;
-    }
-
-    final bytes = res.bodyBytes;
-    if (bytes.isEmpty) {
-      _snack('画像データが空でした');
-      return;
-    }
-
-    // ★QR取得画像も保存前に軽量化してからファイル化
-    final compressed = _compressForStorage(bytes);
-    final saved = await ImageStorage.saveBytes(
-      entryId: e.id,
-      bytes: compressed,
-      kind: 'goshuin',
-      ext: 'jpg',
-    );
-
-    setState(() {
-      _setSlotPath(slot, saved);
-      _goshuinTrashSlot = null;
-    });
-
-    final ok = await _saveNowVerified(verifyGoshuin: true);
-    if (!ok) {
-      _snack('画像は表示できましたが、保存確認に失敗しました');
-    } else {
-      _snack('QRから御朱印を取り込みました');
-    }
-  }
-
-  void _openGoshuinViewer(int slot) {
-    final path = _getSlotPath(slot);
-    if (path.trim().isEmpty) return;
-
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => _SingleImageViewer(path: path, title: '御朱印'),
-      ),
-    );
+    _saveNow();
   }
 
   Future<void> _chooseGoshuinSource(int slot) async {
@@ -666,6 +630,7 @@ class _BookPageState extends State<BookPage> {
         ),
       ),
     );
+
     if (result == 'gallery') {
       await _setGoshuinFromGallery(slot);
     } else if (result == 'camera') {
@@ -675,10 +640,9 @@ class _BookPageState extends State<BookPage> {
     }
   }
 
-  // ---------- 御朱印：長押しで🗑️表示 ----------
   void _showGoshuinTrash(int slot) {
-    final has = _getSlotPath(slot).trim().isNotEmpty;
-    if (!has) return;
+    final path = _getSlotPath(slot);
+    if (path.isEmpty) return;
     setState(() => _goshuinTrashSlot = slot);
   }
 
@@ -689,7 +653,7 @@ class _BookPageState extends State<BookPage> {
 
   Future<void> _deleteGoshuinSlot(int slot) async {
     final path = _getSlotPath(slot);
-    if (path.trim().isEmpty) return;
+    if (path.isEmpty) return;
 
     final okDialog = await showDialog<bool>(
       context: context,
@@ -710,26 +674,26 @@ class _BookPageState extends State<BookPage> {
     );
     if (okDialog != true) return;
 
-    // ★ファイルも削除
-    await ImageStorage.deleteFile(path);
+    await ImageStorage.deleteImage(path);
+    _goshuinFullBytesCache.remove(path);
+    _goshuinThumbFutureCache.remove(path);
 
     setState(() {
       if (slot >= 0 && slot < _goshuinPaths.length) {
         _goshuinPaths[slot] = '';
       }
-      while (_goshuinPaths.isNotEmpty && _goshuinPaths.last.trim().isEmpty) {
+      while (_goshuinPaths.isNotEmpty && _goshuinPaths.last.isEmpty) {
         _goshuinPaths.removeLast();
       }
       _goshuinTrashSlot = null;
     });
 
-    final ok = await _saveNowVerified(verifyGoshuin: true);
-    if (!ok) _snack('削除は反映されましたが、保存確認に失敗しました');
+    await _saveNow();
   }
 
   Widget _goshuinSlot({required int slot, required String label}) {
     final path = _getSlotPath(slot);
-    final has = path.trim().isNotEmpty;
+    final has = path.isNotEmpty;
     final showTrash = _goshuinTrashSlot == slot;
 
     return Column(
@@ -746,7 +710,7 @@ class _BookPageState extends State<BookPage> {
               return;
             }
             if (has) {
-              _openGoshuinViewer(slot);
+              await _openGoshuinViewer(slot);
             } else {
               await _chooseGoshuinSource(slot);
             }
@@ -763,9 +727,25 @@ class _BookPageState extends State<BookPage> {
                 child: has
                     ? ClipRRect(
                         borderRadius: BorderRadius.circular(11),
-                        child: Image.file(
-                          File(path),
-                          fit: BoxFit.cover,
+                        child: FutureBuilder<Uint8List?>(
+                          future: _getGoshuinThumbBytes(slot),
+                          builder: (_, snap) {
+                            final b = snap.data;
+                            if (b == null || b.isEmpty) {
+                              return const Center(
+                                child: Icon(Icons.image_outlined,
+                                    color: Colors.black38),
+                              );
+                            }
+                            return Image.memory(
+                              b,
+                              fit: BoxFit.cover,
+                              width: double.infinity,
+                              height: double.infinity,
+                              filterQuality: FilterQuality.low,
+                              gaplessPlayback: true,
+                            );
+                          },
                         ),
                       )
                     : const Center(
@@ -807,50 +787,47 @@ class _BookPageState extends State<BookPage> {
     );
   }
 
-  // ---------- アルバム：複数追加（パス保存） ----------
+  // ----------------------------
+  // Album (paths)
+  // ----------------------------
+  bool _albumSelectionMode = false;
+  final Set<int> _albumSelectedIndexes = <int>{};
+
   Future<void> _pickImages() async {
     if (kIsWeb) {
-      _snack('Webではファイル保存が使えません（スマホアプリでご利用ください）。');
+      _snack('Webではファイル保存できません。スマホアプリでご利用ください。');
       return;
     }
-    final e = _entry;
-    if (e == null) return;
 
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.image,
         allowMultiple: true,
-        withData: false, // ★スマホはパスコピーでOK
+        withData: true,
       );
       if (result == null || result.files.isEmpty) return;
 
-      final added = <String>[];
-      for (final f in result.files) {
-        final pth = f.path;
-        if (pth == null || pth.trim().isEmpty) continue;
+      final picked =
+          result.files.map((f) => f.bytes).whereType<Uint8List>().toList();
+      if (picked.isEmpty) return;
 
-        final copied = await ImageStorage.copyFromPath(
-          entryId: e.id,
-          sourcePath: pth,
-          kind: 'album',
-        );
-        if (copied.isNotEmpty) added.add(copied);
+      for (final raw in picked) {
+        final bytes = _compressForStorage(raw, maxWidth: 1400, quality: 82);
+        final savedPath = await ImageStorage.saveImage(bytes, isGoshuin: false);
+
+        _albumPaths.add(savedPath);
+        _albumFullBytesCache[savedPath] = bytes; // 直後に見たいケース用（現状維持）
+        _albumThumbFutureCache.remove(savedPath);
       }
-      if (added.isEmpty) return;
 
-      setState(() {
-        _albumPaths.addAll(added);
-      });
-
-      final ok = await _saveNowVerified(verifyGoshuin: false);
-      if (!ok) _snack('画像は表示できましたが、保存確認に失敗しました');
+      setState(() {});
+      await _saveNow();
     } catch (e) {
       debugPrint('アルバム 追加エラー: $e');
       _snack('画像の読み込みに失敗しました');
     }
   }
 
-  // ---------- アルバム：選択モード ----------
   void _enterAlbumSelectionMode(int index) {
     setState(() {
       _albumSelectionMode = true;
@@ -903,12 +880,12 @@ class _BookPageState extends State<BookPage> {
     final sorted = _albumSelectedIndexes.toList()
       ..sort((a, b) => b.compareTo(a));
 
-    // ★ファイルも削除してからリストから消す
     for (final i in sorted) {
-      if (i >= 0 && i < _albumPaths.length) {
-        final path = _albumPaths[i];
-        await ImageStorage.deleteFile(path);
-      }
+      if (i < 0 || i >= _albumPaths.length) continue;
+      final p = _albumPaths[i];
+      await ImageStorage.deleteImage(p);
+      _albumFullBytesCache.remove(p);
+      _albumThumbFutureCache.remove(p);
     }
 
     setState(() {
@@ -921,19 +898,32 @@ class _BookPageState extends State<BookPage> {
       _albumSelectionMode = false;
     });
 
-    final ok = await _saveNowVerified(verifyGoshuin: false);
-    if (!ok) _snack('削除は反映されましたが、保存確認に失敗しました');
+    await _saveNow();
+  }
+
+  Future<Uint8List?> _getAlbumThumbBytesAt(int index) async {
+    if (index < 0 || index >= _albumPaths.length) return null;
+    final p = _albumPaths[index];
+
+    return _albumThumbFutureCache.putIfAbsent(p, () async {
+      final t = await ImageStorage.loadThumbnail(p);
+      if (t != null && t.isNotEmpty) return t;
+      return await ImageStorage.loadImage(p);
+    });
   }
 
   void _openViewer(int index) {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => _ImageViewer(paths: _albumPaths, index: index),
+        builder: (_) => _AlbumViewer(paths: _albumPaths, startIndex: index),
       ),
     );
   }
 
+  // ----------------------------
+  // UI
+  // ----------------------------
   @override
   Widget build(BuildContext context) {
     final edge = MediaQuery.of(context).size.width * 0.10;
@@ -996,9 +986,7 @@ class _BookPageState extends State<BookPage> {
                           const Text(
                             '御朱印（最大2つ）',
                             style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
+                                fontSize: 18, fontWeight: FontWeight.bold),
                           ),
                           const SizedBox(height: 10),
                           Row(
@@ -1020,6 +1008,7 @@ class _BookPageState extends State<BookPage> {
                       ),
                     ),
                   ),
+
                   const SizedBox(height: 24),
 
                   // 寺院プロフィール
@@ -1051,8 +1040,7 @@ class _BookPageState extends State<BookPage> {
                             controller: _templeNameController,
                             onChanged: (_) => _saveNow(),
                             decoration: commonInputDecoration.copyWith(
-                              labelText: '寺院名',
-                            ),
+                                labelText: '寺院名'),
                           ),
                           const SizedBox(height: 12),
                           TextField(
@@ -1070,17 +1058,15 @@ class _BookPageState extends State<BookPage> {
                           TextField(
                             controller: _sectController,
                             onChanged: (_) => _saveNow(),
-                            decoration: commonInputDecoration.copyWith(
-                              labelText: '宗派',
-                            ),
+                            decoration:
+                                commonInputDecoration.copyWith(labelText: '宗派'),
                           ),
                           const SizedBox(height: 12),
                           TextField(
                             controller: _honzonController,
                             onChanged: (_) => _saveNow(),
                             decoration: commonInputDecoration.copyWith(
-                              labelText: '御本尊',
-                            ),
+                                labelText: '御本尊'),
                           ),
                         ],
                       ),
@@ -1106,10 +1092,7 @@ class _BookPageState extends State<BookPage> {
                     children: [
                       Row(
                         children: [
-                          const Text(
-                            '参拝アルバム',
-                            style: TextStyle(fontSize: 16),
-                          ),
+                          const Text('参拝アルバム', style: TextStyle(fontSize: 16)),
                           if (_albumSelectionMode) ...[
                             const SizedBox(width: 10),
                             Text(
@@ -1162,7 +1145,6 @@ class _BookPageState extends State<BookPage> {
                       ),
                       itemBuilder: (_, i) {
                         final selected = _albumSelectedIndexes.contains(i);
-                        final path = _albumPaths[i];
 
                         return GestureDetector(
                           onLongPress: () => _enterAlbumSelectionMode(i),
@@ -1183,11 +1165,29 @@ class _BookPageState extends State<BookPage> {
                                 ),
                                 child: ClipRRect(
                                   borderRadius: BorderRadius.circular(11),
-                                  child: Image.file(
-                                    File(path),
-                                    fit: BoxFit.cover,
-                                    width: double.infinity,
-                                    height: double.infinity,
+                                  child: FutureBuilder<Uint8List?>(
+                                    future: _getAlbumThumbBytesAt(i),
+                                    builder: (_, snap) {
+                                      final b = snap.data;
+                                      if (b == null || b.isEmpty) {
+                                        return const ColoredBox(
+                                          color: Colors.white,
+                                          child: Center(
+                                            child: Icon(Icons.image_outlined,
+                                                color: Colors.black38,
+                                                size: 24),
+                                          ),
+                                        );
+                                      }
+                                      return Image.memory(
+                                        b,
+                                        fit: BoxFit.cover,
+                                        width: double.infinity,
+                                        height: double.infinity,
+                                        filterQuality: FilterQuality.low,
+                                        gaplessPlayback: true,
+                                      );
+                                    },
                                   ),
                                 ),
                               ),
@@ -1212,11 +1212,8 @@ class _BookPageState extends State<BookPage> {
                                       color: Colors.blue.withOpacity(0.9),
                                       shape: BoxShape.circle,
                                     ),
-                                    child: const Icon(
-                                      Icons.check,
-                                      size: 16,
-                                      color: Colors.white,
-                                    ),
+                                    child: const Icon(Icons.check,
+                                        size: 16, color: Colors.white),
                                   ),
                                 ),
                             ],
@@ -1230,8 +1227,6 @@ class _BookPageState extends State<BookPage> {
               ),
             ),
           ),
-
-          // 左端：前の寺院
           Positioned(
             left: 0,
             top: 0,
@@ -1242,8 +1237,6 @@ class _BookPageState extends State<BookPage> {
               onTap: _canGoPrev ? _goPrev : null,
             ),
           ),
-
-          // 右端：次の寺院
           Positioned(
             right: 0,
             top: 0,
@@ -1260,15 +1253,18 @@ class _BookPageState extends State<BookPage> {
   }
 }
 
-class _ImageViewer extends StatelessWidget {
-  const _ImageViewer({required this.paths, required this.index});
+// ----------------------------
+// Viewers
+// ----------------------------
+class _AlbumViewer extends StatelessWidget {
+  const _AlbumViewer({required this.paths, required this.startIndex});
 
   final List<String> paths;
-  final int index;
+  final int startIndex;
 
   @override
   Widget build(BuildContext context) {
-    final controller = PageController(initialPage: index);
+    final controller = PageController(initialPage: startIndex);
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -1280,8 +1276,15 @@ class _ImageViewer extends StatelessWidget {
         controller: controller,
         itemCount: paths.length,
         itemBuilder: (_, i) => Center(
-          child: InteractiveViewer(
-            child: Image.file(File(paths[i])),
+          child: FutureBuilder<Uint8List?>(
+            future: ImageStorage.loadImage(paths[i]),
+            builder: (_, snap) {
+              final b = snap.data;
+              if (b == null || b.isEmpty) {
+                return const CircularProgressIndicator();
+              }
+              return InteractiveViewer(child: Image.memory(b));
+            },
           ),
         ),
       ),
@@ -1290,9 +1293,9 @@ class _ImageViewer extends StatelessWidget {
 }
 
 class _SingleImageViewer extends StatelessWidget {
-  const _SingleImageViewer({required this.path, required this.title});
+  const _SingleImageViewer({required this.bytes, required this.title});
 
-  final String path;
+  final Uint8List bytes;
   final String title;
 
   @override
@@ -1305,9 +1308,7 @@ class _SingleImageViewer extends StatelessWidget {
         foregroundColor: Colors.white,
       ),
       body: Center(
-        child: InteractiveViewer(
-          child: Image.file(File(path)),
-        ),
+        child: InteractiveViewer(child: Image.memory(bytes)),
       ),
     );
   }

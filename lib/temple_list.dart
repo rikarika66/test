@@ -1,8 +1,9 @@
-import 'dart:io';
-import 'dart:ui'; // ImageFilter（ぼかし）用
+import 'dart:typed_data';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
+import 'image_storage.dart';
 import 'pages/cover.dart';
 import 'pages/qr_scan.dart';
 import 'temple_store.dart';
@@ -25,11 +26,12 @@ class _TempleListPageState extends State<TempleListPage> {
   List<TempleEntry> _entries = [];
   TempleSortMode _sortMode = TempleSortMode.visitDateDesc;
 
-  // 長押しで🗑️を出す（表示中タイルID）
   String? _trashTempleId;
 
-  // ★ 下帯（御朱印サムネ）のベース色：濃紺（藍）
   static const Color _bandBaseColor = Color(0xFF1E2A38);
+
+  // サムネ読み込みのFutureを使い回す（無駄ロード削減）
+  final Map<String, Future<Uint8List?>> _thumbFutureCache = {};
 
   @override
   void initState() {
@@ -52,7 +54,6 @@ class _TempleListPageState extends State<TempleListPage> {
     if (a == null && b == null) return 0;
     if (a == null) return 1;
     if (b == null) return -1;
-
     final cmp = a.compareTo(b);
     return desc ? -cmp : cmp;
   }
@@ -83,6 +84,10 @@ class _TempleListPageState extends State<TempleListPage> {
     final all = await TempleStore.loadAll();
     _applySort(all);
     if (!mounted) return;
+
+    // キャッシュを軽くリセット（寺院の並びが変わる/削除があるため）
+    _thumbFutureCache.clear();
+
     setState(() => _entries = all);
   }
 
@@ -96,9 +101,7 @@ class _TempleListPageState extends State<TempleListPage> {
           final offset = Tween<Offset>(
             begin: const Offset(1.0, 0.0),
             end: Offset.zero,
-          ).animate(
-            CurvedAnimation(parent: animation, curve: Curves.easeOut),
-          );
+          ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOut));
           return SlideTransition(position: offset, child: child);
         },
       ),
@@ -121,17 +124,12 @@ class _TempleListPageState extends State<TempleListPage> {
     final idx = ids.indexOf(entry.id);
 
     await _pushSlide(
-      BookPage(
-        templeId: entry.id,
-        templeIds: ids,
-        currentIndex: idx,
-      ),
+      BookPage(templeId: entry.id, templeIds: ids, currentIndex: idx),
     );
 
     await _reload();
   }
 
-  /// ★QRで追加（QR→新規カード作成→BookPageを開く→自動取込）
   Future<void> _addFromQr() async {
     final code = await Navigator.push<String>(
       context,
@@ -142,7 +140,6 @@ class _TempleListPageState extends State<TempleListPage> {
     if (code == null || code.trim().isEmpty) return;
 
     final qrUrl = code.trim();
-
     final newId = DateTime.now().millisecondsSinceEpoch.toString();
     final entry = TempleStore.newEntryWithId(newId);
 
@@ -173,18 +170,12 @@ class _TempleListPageState extends State<TempleListPage> {
     final idx = ids.indexOf(id);
 
     await _pushSlide(
-      BookPage(
-        templeId: id,
-        templeIds: ids,
-        currentIndex: idx,
-      ),
+      BookPage(templeId: id, templeIds: ids, currentIndex: idx),
     );
     await _reload();
   }
 
-  void _showTrash(String id) {
-    setState(() => _trashTempleId = id);
-  }
+  void _showTrash(String id) => setState(() => _trashTempleId = id);
 
   void _hideTrash() {
     if (_trashTempleId == null) return;
@@ -228,24 +219,36 @@ class _TempleListPageState extends State<TempleListPage> {
     }
   }
 
-  /// 御朱印サムネ：①があれば①、なければ②、どちらも空ならnull（★パス版）
+  /// サムネ候補（①→②）でパスを選ぶ
   String? _pickGoshuinThumbPath(TempleEntry e) {
     for (final p in e.goshuinImagePaths) {
-      if (p.trim().isEmpty) continue;
-      final f = File(p);
-      if (f.existsSync()) return p;
+      if (p.isNotEmpty) return p;
     }
     return null;
   }
 
-  // 文字影（読みやすさ用）
+  /// ✅ サムネ（_thumb.jpg）を優先して読み込む
+  /// もし過去データ等でサムネが存在しない場合は、元画像へフォールバック。
+  Future<Uint8List?> _loadThumbBytes(String originalPath) {
+    return _thumbFutureCache.putIfAbsent(originalPath, () async {
+      final thumb = await ImageStorage.loadThumbnail(originalPath);
+      if (thumb != null && thumb.isNotEmpty) return thumb;
+
+      // フォールバック（古いデータ向け）
+      final original = await ImageStorage.loadImage(originalPath);
+      return original;
+    });
+  }
+
   List<Shadow> get _textShadows => const [
-        Shadow(
-          blurRadius: 3,
-          offset: Offset(0, 1.5),
-          color: Colors.black87,
-        ),
+        Shadow(blurRadius: 3, offset: Offset(0, 1.5), color: Colors.black87),
       ];
+
+  Widget _placeholder() {
+    return const Center(
+      child: Icon(Icons.image_outlined, color: Colors.black38, size: 28),
+    );
+  }
 
   Widget _gridTile(TempleEntry e) {
     final title = e.templeName.isEmpty ? '（寺院名未入力）' : e.templeName;
@@ -264,7 +267,6 @@ class _TempleListPageState extends State<TempleListPage> {
       },
       child: Stack(
         children: [
-          // サムネ本体
           Container(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
@@ -274,24 +276,29 @@ class _TempleListPageState extends State<TempleListPage> {
             child: ClipRRect(
               borderRadius: BorderRadius.circular(11),
               child: thumbPath == null
-                  ? const Center(
-                      child: Icon(Icons.image_outlined,
-                          color: Colors.black38, size: 28),
-                    )
+                  ? _placeholder()
                   : Padding(
                       padding: const EdgeInsets.all(6),
-                      child: Image.file(
-                        File(thumbPath),
-                        fit: BoxFit.contain,
-                        alignment: Alignment.center,
-                        width: double.infinity,
-                        height: double.infinity,
+                      child: FutureBuilder<Uint8List?>(
+                        future: _loadThumbBytes(thumbPath),
+                        builder: (_, snap) {
+                          final b = snap.data;
+                          if (b == null || b.isEmpty) return _placeholder();
+
+                          return Image.memory(
+                            b,
+                            fit: BoxFit.contain,
+                            alignment: Alignment.center,
+                            width: double.infinity,
+                            height: double.infinity,
+                            filterQuality: FilterQuality.low, // サムネ表示なので軽く
+                            gaplessPlayback: true,
+                          );
+                        },
                       ),
                     ),
             ),
           ),
-
-          // ★ 下帯：濃紺＋ぼかし＋文字影（寺院名2行）
           Positioned(
             left: 0,
             right: 0,
@@ -346,8 +353,6 @@ class _TempleListPageState extends State<TempleListPage> {
               ),
             ),
           ),
-
-          // 🗑️表示時の薄暗さ
           if (showTrash)
             Positioned.fill(
               child: Container(
@@ -357,8 +362,6 @@ class _TempleListPageState extends State<TempleListPage> {
                 ),
               ),
             ),
-
-          // 🗑️アイコン
           if (showTrash)
             Positioned(
               right: 6,
@@ -387,7 +390,8 @@ class _TempleListPageState extends State<TempleListPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('寺院一覧'),
+        // ✅ 並び順ラベルをタイトルに出して _sortLabel を使用（未使用警告を消す）
+        title: Text('寺院一覧（${_sortLabel(_sortMode)}）'),
         automaticallyImplyLeading: false,
         actions: [
           PopupMenuButton<TempleSortMode>(

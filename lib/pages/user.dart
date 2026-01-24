@@ -10,9 +10,39 @@ class UserPage extends StatefulWidget {
 class _UserPageState extends State<UserPage> {
   final _formKey = GlobalKey<FormState>();
 
-  String _name = '';
-  String _nick = '';
-  String _profile = '';
+  final _nameController = TextEditingController();
+  final _nickController = TextEditingController();
+  final _profileController = TextEditingController();
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _nickController.dispose();
+    _profileController.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    // Formとしての整合性を保つ（今後validatorを足してもOK）
+    final state = _formKey.currentState;
+    if (state == null) return;
+    state.save();
+
+    final name = _nameController.text.trim();
+    final nick = _nickController.text.trim();
+    final profile = _profileController.text.trim();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('保存しました')),
+    );
+
+    // ✅ 入力値を呼び出し元へ返す（未使用警告も消えやすい）
+    Navigator.pop(context, {
+      'name': name,
+      'nick': nick,
+      'profile': profile,
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -25,29 +55,27 @@ class _UserPageState extends State<UserPage> {
           child: ListView(
             children: [
               TextFormField(
+                controller: _nameController,
                 decoration: const InputDecoration(labelText: '名前'),
-                onSaved: (v) => _name = v ?? '',
+                textInputAction: TextInputAction.next,
               ),
               const SizedBox(height: 16),
               TextFormField(
+                controller: _nickController,
                 decoration: const InputDecoration(labelText: 'ニックネーム'),
-                onSaved: (v) => _nick = v ?? '',
+                textInputAction: TextInputAction.next,
               ),
               const SizedBox(height: 16),
               TextFormField(
+                controller: _profileController,
                 decoration: const InputDecoration(labelText: '一言プロフィール'),
                 maxLines: 3,
-                onSaved: (v) => _profile = v ?? '',
+                textInputAction: TextInputAction.done,
+                onFieldSubmitted: (_) => _save(),
               ),
               const SizedBox(height: 24),
               FilledButton(
-                onPressed: () {
-                  _formKey.currentState!.save();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('保存しました')),
-                  );
-                  Navigator.pop(context);
-                },
+                onPressed: _save,
                 child: const Text('保存'),
               ),
             ],

@@ -1,10 +1,9 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'image_storage.dart';
-
-/// 寺院1件分のデータ（★画像はパスで保持）
+/// 寺院1件分のデータ
 class TempleEntry {
   TempleEntry({
     required this.id,
@@ -15,13 +14,13 @@ class TempleEntry {
     required this.honzon,
     required this.memo,
     required this.albumImagePaths,
-    required this.goshuinImagePaths, // ★最大2枚
+    required this.goshuinImagePaths, // 最大2枚
     required this.updatedAtMillis,
   });
 
   final String id;
   String templeName;
-  String visitDateText; // 例: 2025年11月28日
+  String visitDateText;
   String address;
   String sect;
   String honzon;
@@ -35,6 +34,9 @@ class TempleEntry {
 
   int updatedAtMillis;
 
+  // ----------------------------
+  // JSON 保存
+  // ----------------------------
   Map<String, dynamic> toJson() => {
         'id': id,
         'templeName': templeName,
@@ -48,15 +50,18 @@ class TempleEntry {
         'updatedAtMillis': updatedAtMillis,
       };
 
+  // ----------------------------
+  // JSON 復元
+  // ----------------------------
   static TempleEntry fromJson(Map<String, dynamic> json) {
     final albumPaths = (json['albumImagePaths'] as List<dynamic>? ?? [])
         .whereType<String>()
-        .where((p) => p.trim().isNotEmpty)
+        .where((p) => p.isNotEmpty)
         .toList();
 
     final goshuinPaths = (json['goshuinImagePaths'] as List<dynamic>? ?? [])
         .whereType<String>()
-        .where((p) => p.trim().isNotEmpty)
+        .where((p) => p.isNotEmpty)
         .take(2)
         .toList();
 
@@ -76,10 +81,18 @@ class TempleEntry {
   }
 
   static String _genId() => DateTime.now().millisecondsSinceEpoch.toString();
+
+  /// ファイルが実在するか（UIで安全に使う用）
+  static bool exists(String path) {
+    return path.isNotEmpty && File(path).existsSync();
+  }
 }
 
+// ===================================================
+// 永続化ストア
+// ===================================================
 class TempleStore {
-  static const String _listKey = 'templeEntries_v1';
+  static const String _listKey = 'templeEntries_v2';
 
   static Future<List<TempleEntry>> loadAll() async {
     final prefs = await SharedPreferences.getInstance();
@@ -89,13 +102,10 @@ class TempleStore {
     try {
       final decoded = jsonDecode(raw);
       if (decoded is! List) return [];
-
       final list = decoded
-          .whereType<dynamic>()
           .map((e) => TempleEntry.fromJson(e as Map<String, dynamic>))
           .toList();
 
-      // 新しい順
       list.sort((a, b) => b.updatedAtMillis.compareTo(a.updatedAtMillis));
       return list;
     } catch (_) {
@@ -105,12 +115,10 @@ class TempleStore {
 
   static Future<bool> saveAll(List<TempleEntry> entries) async {
     final prefs = await SharedPreferences.getInstance();
-    final jsonList = entries.map((e) => e.toJson()).toList();
-    final payload = jsonEncode(jsonList);
+    final payload = jsonEncode(entries.map((e) => e.toJson()).toList());
 
     try {
-      final ok = await prefs.setString(_listKey, payload);
-      return ok;
+      return await prefs.setString(_listKey, payload);
     } catch (_) {
       return false;
     }
@@ -137,40 +145,36 @@ class TempleStore {
       all.insert(0, entry);
     }
 
-    return await saveAll(all);
+    return saveAll(all);
   }
 
-  /// ★寺院データ削除（画像ファイルも一緒に削除）
   static Future<void> deleteById(String id) async {
     final all = await loadAll();
     all.removeWhere((e) => e.id == id);
     await saveAll(all);
-
-    // 画像フォルダごと削除（失敗しても落ちない設計）
-    await ImageStorage.deleteEntryDir(id);
   }
 
   /// 新規作成（ID自動生成）
-  static TempleEntry newEntry() => newEntryWithId(_genId());
+  static TempleEntry newEntry() {
+    return newEntryWithId(DateTime.now().millisecondsSinceEpoch.toString());
+  }
 
   /// ★新規作成（ID指定）
-  /// BookPage が templeId を持って開かれるケースでも、IDがブレないようにする
   static TempleEntry newEntryWithId(String id) {
     final now = DateTime.now();
     final dateText = '${now.year}年${now.month}月${now.day}日';
+
     return TempleEntry(
       id: id,
       templeName: '',
-      visitDateText: dateText, // 初期値＝今日（現状維持）
+      visitDateText: dateText,
       address: '',
       sect: '',
       honzon: '',
       memo: '',
-      albumImagePaths: const [],
-      goshuinImagePaths: const [],
+      albumImagePaths: [],
+      goshuinImagePaths: [],
       updatedAtMillis: DateTime.now().millisecondsSinceEpoch,
     );
   }
-
-  static String _genId() => DateTime.now().millisecondsSinceEpoch.toString();
 }

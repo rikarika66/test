@@ -39,13 +39,6 @@ class _CoverPageState extends State<CoverPage> {
     _index = lastSeasonIndex.clamp(0, _covers.length - 1);
   }
 
-  void _nextCover() {
-    setState(() {
-      _index = (_index + 1) % _covers.length;
-      lastSeasonIndex = _index; // ★保存
-    });
-  }
-
   void _setCover(int i) {
     setState(() {
       _index = i;
@@ -143,7 +136,8 @@ class _CoverPageState extends State<CoverPage> {
                                             .showSnackBar(
                                           const SnackBar(
                                             content: Text(
-                                                'まだ寺院の記録がありません。先に寺院を追加してください。'),
+                                              'まだ寺院の記録がありません。先に寺院を追加してください。',
+                                            ),
                                           ),
                                         );
                                         return;

@@ -8,8 +8,27 @@ class SnsPage extends StatefulWidget {
 }
 
 class _SnsPageState extends State<SnsPage> {
-  String _x = '';
-  String _insta = '';
+  final _xController = TextEditingController();
+  final _instaController = TextEditingController();
+
+  @override
+  void dispose() {
+    _xController.dispose();
+    _instaController.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final x = _xController.text.trim();
+    final insta = _instaController.text.trim();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('保存しました')),
+    );
+
+    // ✅ 入力値を呼び出し元へ返す（未使用警告も出にくい）
+    Navigator.pop(context, {'x': x, 'instagram': insta});
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -20,24 +39,22 @@ class _SnsPageState extends State<SnsPage> {
         child: Column(
           children: [
             TextField(
+              controller: _xController,
               decoration: const InputDecoration(labelText: 'X（Twitter）'),
-              onChanged: (v) => _x = v,
+              textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 16),
             TextField(
+              controller: _instaController,
               decoration: const InputDecoration(labelText: 'Instagram'),
-              onChanged: (v) => _insta = v,
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => _save(),
             ),
             const SizedBox(height: 24),
             FilledButton(
-              onPressed: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('保存しました')),
-                );
-                Navigator.pop(context);
-              },
+              onPressed: _save,
               child: const Text('保存'),
-            )
+            ),
           ],
         ),
       ),

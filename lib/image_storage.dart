@@ -1,98 +1,100 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:image/image.dart' as img;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 class ImageStorage {
-  ImageStorage._();
+  static const _albumDir = 'album';
+  static const _goshuinDir = 'goshuin';
 
-  /// 画像の保存先ルート（アプリ内部）
   static Future<Directory> _rootDir() async {
-    final dir = await getApplicationDocumentsDirectory();
-    final root = Directory(p.join(dir.path, 'goshuin_images'));
-    if (!await root.exists()) {
-      await root.create(recursive: true);
+    final base = await getApplicationDocumentsDirectory();
+    final dir = Directory(p.join(base.path, 'images'));
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
     }
-    return root;
+    return dir;
   }
 
-  /// 寺院IDごとの保存フォルダ
-  static Future<Directory> _entryDir(String entryId) async {
-    final root = await _rootDir();
-    final d = Directory(p.join(root.path, entryId));
-    if (!await d.exists()) {
-      await d.create(recursive: true);
+  static Future<Directory> _albumRoot() async {
+    final dir = Directory(p.join((await _rootDir()).path, _albumDir));
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
     }
-    return d;
+    return dir;
   }
 
-  /// bytes をファイル保存して「パス」を返す
-  /// kind: 'album' / 'goshuin' など識別用
-  /// ext : 'jpg' 'png' など。分からなければ 'jpg' 推奨
-  static Future<String> saveBytes({
-    required String entryId,
-    required Uint8List bytes,
-    required String kind,
-    String ext = 'jpg',
+  static Future<Directory> _goshuinRoot() async {
+    final dir = Directory(p.join((await _rootDir()).path, _goshuinDir));
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
+    return dir;
+  }
+
+  /// ===== 保存（元画像＋サムネ）=====
+  static Future<String> saveImage(
+    Uint8List bytes, {
+    required bool isGoshuin,
   }) async {
-    final dir = await _entryDir(entryId);
-    final safeExt = ext.replaceAll('.', '').trim();
-    final ts = DateTime.now().millisecondsSinceEpoch;
-    final filename = '${kind}_$ts.$safeExt';
-    final file = File(p.join(dir.path, filename));
-    await file.writeAsBytes(bytes, flush: true);
-    return file.path;
+    final dir = isGoshuin ? await _goshuinRoot() : await _albumRoot();
+    final baseName = DateTime.now().millisecondsSinceEpoch.toString();
+
+    final originalPath = p.join(dir.path, '$baseName.jpg');
+    final thumbPath = p.join(dir.path, '${baseName}_thumb.jpg');
+
+    // 元画像保存
+    await File(originalPath).writeAsBytes(bytes, flush: true);
+
+    // サムネ生成
+    final decoded = img.decodeImage(bytes);
+    if (decoded != null) {
+      final thumb = img.copyResize(decoded, width: 300);
+      final thumbBytes = img.encodeJpg(thumb, quality: 80);
+      await File(thumbPath).writeAsBytes(thumbBytes, flush: true);
+    }
+
+    return originalPath;
   }
 
-  /// 既存ファイルをアプリ内へコピーしてパスを返す（FilePicker等で便利）
-  static Future<String> copyFromPath({
-    required String entryId,
-    required String sourcePath,
-    required String kind,
-  }) async {
-    final src = File(sourcePath);
-    if (!await src.exists()) return '';
-
-    final dir = await _entryDir(entryId);
-    final ext = p.extension(sourcePath).replaceAll('.', '');
-    final safeExt = (ext.isEmpty) ? 'jpg' : ext;
-
-    final ts = DateTime.now().millisecondsSinceEpoch;
-    final filename = '${kind}_$ts.$safeExt';
-    final dst = File(p.join(dir.path, filename));
-    await src.copy(dst.path);
-    return dst.path;
+  /// ===== 読み込み =====
+  static Future<Uint8List?> loadImage(String path) async {
+    final file = File(path);
+    if (!await file.exists()) return null;
+    return file.readAsBytes();
   }
 
-  /// ファイル削除（失敗しても落ちない）
-  static Future<void> deleteFile(String path) async {
-    if (path.isEmpty) return;
-    try {
-      final f = File(path);
-      if (await f.exists()) {
-        await f.delete();
-      }
-    } catch (_) {}
+  static Future<Uint8List?> loadThumbnail(String originalPath) async {
+    final thumbPath = _thumbPath(originalPath);
+    final file = File(thumbPath);
+    if (!await file.exists()) return null;
+    return file.readAsBytes();
   }
 
-  /// entryIdフォルダごと削除（寺院データ削除時に使う）
-  static Future<void> deleteEntryDir(String entryId) async {
-    try {
-      final dir = await _entryDir(entryId);
-      if (await dir.exists()) {
-        await dir.delete(recursive: true);
-      }
-    } catch (_) {}
+  static String _thumbPath(String originalPath) {
+    final dir = p.dirname(originalPath);
+    final name = p.basenameWithoutExtension(originalPath);
+    return p.join(dir, '${name}_thumb.jpg');
   }
 
-  /// 存在チェック（UIで Image.file に渡す前に安全策）
-  static Future<bool> exists(String path) async {
-    if (path.isEmpty) return false;
-    try {
-      return File(path).exists();
-    } catch (_) {
-      return false;
+  /// ===== 削除 =====
+  static Future<void> deleteImage(String path) async {
+    final original = File(path);
+    final thumb = File(_thumbPath(path));
+
+    if (await original.exists()) {
+      await original.delete();
+    }
+    if (await thumb.exists()) {
+      await thumb.delete();
+    }
+  }
+
+  static Future<void> deleteImages(List<String> paths) async {
+    for (final p in paths) {
+      await deleteImage(p);
     }
   }
 }
