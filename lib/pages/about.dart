@@ -1,14 +1,23 @@
 import 'package:flutter/material.dart';
+
 import 'cover.dart';
 
-class AboutPage extends StatelessWidget {
+class AboutPage extends StatefulWidget {
   const AboutPage({super.key});
 
+  @override
+  State<AboutPage> createState() => _AboutPageState();
+}
+
+class _AboutPageState extends State<AboutPage> {
   static const String _appTitle = 'デジタル御朱印帳';
   static const String _appTagline = '御朱印と参拝の記録を、寺院ごとにまとめて残すアプリ';
   static const String _copyright = '© Digital Goshuin Book';
 
-  void _goHome(BuildContext context) {
+  // 最初に開いておきたいセクション（必要なら true に）
+  bool _openQuickStart = true;
+
+  void _goHome() {
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const CoverPage()),
       (route) => false,
@@ -27,14 +36,14 @@ class AboutPage extends StatelessWidget {
           IconButton(
             tooltip: 'トップへ',
             icon: const Icon(Icons.home),
-            onPressed: () => _goHome(context),
+            onPressed: _goHome,
           ),
         ],
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // --- ヘッダー ---
+          // ヘッダー（固定で表示）
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -75,22 +84,23 @@ class AboutPage extends StatelessWidget {
 
           const SizedBox(height: 12),
 
-          // --- まずはここから（最短ルート） ---
-          const _SectionCard(
+          // アコーディオン一覧
+          _AccordionSection(
             title: 'まずはここから（最短ルート）',
             icon: Icons.play_circle_outline,
-            children: [
+            initiallyExpanded: _openQuickStart,
+            children: const [
               _Bullet('表紙の「寺院リスト」→ 右下の「寺院を追加」'),
               _Bullet('寺院ページで、御朱印①/②をタップして追加（写真 / カメラ / QR）'),
               _Bullet('参拝日・メモを入力すると、あとで見返しやすくなります'),
               _Bullet('一覧のタイルをタップすると、その寺院ページを開けます'),
             ],
+            onExpandedChanged: (v) => setState(() => _openQuickStart = v),
           ),
 
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
 
-          // --- できること ---
-          const _SectionCard(
+          const _AccordionSection(
             title: 'できること',
             icon: Icons.auto_awesome,
             children: [
@@ -102,10 +112,9 @@ class AboutPage extends StatelessWidget {
             ],
           ),
 
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
 
-          // --- 操作のヒント ---
-          const _SectionCard(
+          const _AccordionSection(
             title: '操作のヒント',
             icon: Icons.tips_and_updates_outlined,
             children: [
@@ -116,23 +125,21 @@ class AboutPage extends StatelessWidget {
             ],
           ),
 
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
 
-          // --- データの保存について ---
-          const _SectionCard(
+          const _AccordionSection(
             title: 'データの保存について',
             icon: Icons.lock_outline,
             children: [
               _Bullet('データは端末内に保存されます（クラウド送信は行いません）'),
               _Bullet('端末の機種変更や再インストールで消える可能性があります'),
-              _Bullet('今後、バックアップ / 共有の仕組みを追加予定です'),
+              _Bullet('今後、バックアップ（エクスポート / インポート）を追加予定です'),
             ],
           ),
 
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
 
-          // --- 今後の予定 ---
-          const _SectionCard(
+          const _AccordionSection(
             title: '今後の予定',
             icon: Icons.route_outlined,
             children: [
@@ -143,7 +150,7 @@ class AboutPage extends StatelessWidget {
             ],
           ),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 22),
 
           Center(
             child: Text(
@@ -159,42 +166,37 @@ class AboutPage extends StatelessWidget {
   }
 }
 
-class _SectionCard extends StatelessWidget {
-  const _SectionCard({
+class _AccordionSection extends StatelessWidget {
+  const _AccordionSection({
     required this.title,
     required this.icon,
     required this.children,
+    this.initiallyExpanded = false,
+    this.onExpandedChanged,
   });
 
   final String title;
   final IconData icon;
   final List<Widget> children;
+  final bool initiallyExpanded;
+  final ValueChanged<bool>? onExpandedChanged;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(icon, size: 20, color: const Color(0xFF1E2A38)),
-                const SizedBox(width: 8),
-                Text(
-                  title,
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            ...children,
-          ],
+      child: Theme(
+        // ExpansionTileの余計な線や余白を整える
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          initiallyExpanded: initiallyExpanded,
+          onExpansionChanged: onExpandedChanged,
+          leading: Icon(icon, size: 20, color: const Color(0xFF1E2A38)),
+          title: Text(
+            title,
+            style: const TextStyle(fontWeight: FontWeight.w800),
+          ),
+          childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          children: children,
         ),
       ),
     );
@@ -209,7 +211,7 @@ class _Bullet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.only(top: 6),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
